@@ -1,0 +1,16 @@
+TSDB (TimeSeries DataBase)
+--------------------------
+
+Timeseries (http://en.wikipedia.org/wiki/Time_series) are used to represent events at specific times. Popular tools such as rrdtool (http://www.rrdtool.org) made it possible to handle time series easily. Unfortunately RRD falls short when
+- handling thousand/million time series due to high update time and disk-space used
+- data have to be exported on a web 2.0 GUI
+
+For this reason we developed TSDB.
+
+test.c
+Allows you to play with the API and see how it works
+
+tsdbExport
+Allows you to export data in both text and Json format
+
+
