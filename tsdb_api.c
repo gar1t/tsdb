@@ -53,7 +53,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     return(-1);
   }
 
-  mode = (read_only_mode ? 00444 : 00777 );
+  mode = (read_only_mode ? 00444 : 00664 );
   if((ret = handler->db->open(handler->db,
 			      NULL,
 			      (const char*)tsdb_path,
