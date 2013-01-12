@@ -34,7 +34,8 @@ static void process_args(int argc, char *argv[], set_args *args) {
       help(0);
       break;
     case 't':
-      args->timestamp = str_to_uint32(argv[optind + 3], "timestamp");
+      args->timestamp = str_to_uint32(optarg, "timestamp");
+      break;
     default:
       help(1);
     }
