@@ -3,7 +3,7 @@
 #define info(...) traceEvent(TRACE_INFO, __VA_ARGS__);
 #define error(...) traceEvent(TRACE_ERROR, __VA_ARGS__);
 #define safe(X) if (X) { error("%s:%u", __FILE__, __LINE__); return -1; }
-#define TIMESLOT 60
+#define TIMESLOT 86400
 #define now() time(NULL)
 
 int main(int argc, char *argv[]) {
