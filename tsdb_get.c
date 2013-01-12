@@ -168,7 +168,7 @@ static void print_tsdb_values(char *file, char *key, u_int32_t start,
 
   open_db(file, &db);
   normalize_epoch(&db, &cur_epoch);
-
+  normalize_epoch(&db, &end);
   while (cur_epoch <= end) {
     print_epoch_vals(&db, cur_epoch, key);
     cur_epoch += db.rrd_slot_time_duration;
