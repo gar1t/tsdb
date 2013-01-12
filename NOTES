@@ -1,0 +1,86 @@
+# -*-org-*-
+
+* Opening a Database
+
+All database operations are performed on an open database, which is represented
+by a database handle.
+
+Here's an example:
+
+#+begin_src c
+  rc = tsdb_open(path,
+                 &handler,
+                 &num_values_per_entry,
+                 rrd_slot_time_duration,
+                 read_only)
+#+end_src
+
+path is the path to the database.
+
+handler is the reference to the database. This can be use in subsequent calls.
+
+num_values_per_entry specifies the number of values per entry when the database
+is created. If the database already exists, it's set to the number used when
+the database was created. Once set, it cannot be changed.
+
+rrd_slot_time_duration specifies the number of seconds per time slot. E.g. a
+value of 60 means that each slot in the database covers 60 seconds.
+
+* Setting the Current Epoch
+
+Use tsdb_goto_epoch to set the current epoch. This is used to read time series
+per key using tsdb_get.
+
+If load_on_demand is set to 1, the operation will always succeed. If set to 0,
+the operation will fail if the epoch doesn't exist.
+
+* Setting Values
+
+There are three operations involved in setting time series values:
+
+- Open a database (tsdb_open)
+- Go to an epoch (tsdb_goto_epoch)
+- Set the value (tsdb_set)
+
+* Questions
+
+** load_page_on_demand
+
+When using load_page_on_demand=1 in tsdb_goto_epoch, map_raw_get always
+fails. For the time being, using load_page_on_demand=0.
+
+** Missing Values
+
+The default_unknown_value for a handler is used as the resp in tsdb_get as
+expected, but tsdb_get returns -1, suggesting that the get failed. Is -1
+explicitly different from a general error, indicating that the default value
+was used? It seems to me that default value might not be needed, if we can
+infer that -1 mean "not set".
+
+** Multiple Values
+
+What are some use cases for storing more than one value per key per slot?
+E.g. I could see this for double precision values.
+
+** Open API Inconsistencies
+
+The open API is a bit odd I think:
+
+- On create num_values_per_entry and rrd_slot_time_duration are both sensibly
+  used to initialize the database
+
+- On open, num_values_per_entry is ignored as input and is instread written to
+  as an output variable, however rrd_slot_time_duration is neither read as
+  input nor written to as output
+
+I'd expect something like this:
+
+- Both args are used as input/output
+
+- There's some indication as to whether or not the db was created or not
+
+Or
+
+- Both args are only input and are ignored on open
+
+- User needs to read from the handler to get the real values
