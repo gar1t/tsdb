@@ -25,8 +25,8 @@
 /* *********************************** */
 
 static void help(void) {
-  printf("tsdbExport -i <tsdb path> [-o <outfile path>] -n <key> "
-	 "-b <begin day (+/-offset)> -d <num days> [-t] [-j]\n");
+  printf("tsdbExport -i <tsdb path> -n <key> -b <begin day +/-offset> "
+         "-d <num days> [ -o <rrd outfile path> ] [ -t | -j ]\n");
   exit(0);
 }
 
@@ -148,6 +148,7 @@ int main(int argc, char *argv[]) {
 
     case 'j':
       js_mode = 1;
+      text_mode = 1;
       break;
 
     case 't':
@@ -160,8 +161,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if((!tsdb_path) || ((!text_mode) && (!out_filepath))
-     || (begin_day == 0) || (num_days == 0) || (hash_id == NULL))
+  if (!tsdb_path || (!text_mode && !js_mode && !out_filepath)
+      || num_days < 0
+      || hash_id == NULL)
     help();
 
   traceEvent(TRACE_INFO, "Opening %s", tsdb_path);
@@ -189,9 +191,6 @@ int main(int argc, char *argv[]) {
       }
     } else
       out = stdout;
-
-    if(!js_mode)
-      fprintf(out, "# date, value\n");
   }
 
   for(num_loops=0; num_loops<handler.num_values_per_entry; num_loops++) {
@@ -199,7 +198,7 @@ int main(int argc, char *argv[]) {
       if(js_mode)
 	fprintf(out, "var results_%d = [\n", num_loops);
       else {
-	if(num_loops == 0) fprintf(out, "# date, value\n");
+	if(num_loops == 0) fprintf(out, "# date value\n");
       }
     }
 
