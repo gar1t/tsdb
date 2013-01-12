@@ -5,10 +5,11 @@ typedef struct {
   char *key;
   u_int32_t start;
   u_int32_t end;
+  int verbose;
 } get_args;
 
 static void help(int code) {
-  printf("tsdb-get file key [-s start] [-e end]\n");
+  printf("tsdb-get [-v] file key [-s start] [-e end]\n");
   exit(code);
 }
 
@@ -59,15 +60,20 @@ static void process_args(int argc, char *argv[], get_args *args) {
   int c;
   u_int32_t now = time(NULL);
 
-  args->start = args->end = now;
+  args->start = now;
+  args->end = now;
+  args->verbose = 0;
 
-  while ((c = getopt(argc, argv, "hs:e:")) != -1) {
+  while ((c = getopt(argc, argv, "hvs:e:")) != -1) {
     switch (c) {
     case 's':
       args->start = epoch_val(optarg, now, "start");
       break;
     case 'e':
       args->end = epoch_val(optarg, now, "end");
+      break;
+    case 'v':
+      args->verbose = 1;
       break;
     case 'h':
       help(0);
@@ -95,8 +101,8 @@ static void check_file_exists(const char *path) {
   }
 }
 
-static void init_trace() {
-  traceLevel = 0;
+static void init_trace(int verbose) {
+  traceLevel = verbose ? 99 : 0;
 }
 
 static void open_db(char *file, tsdb_handler *db) {
@@ -172,9 +178,8 @@ static void print_tsdb_values(char *file, char *key, u_int32_t start,
 int main(int argc, char *argv[]) {
   get_args args;
 
-  init_trace();
-
   process_args(argc, argv, &args);
+  init_trace(args.verbose);
   check_file_exists(args.file);
   print_tsdb_values(args.file, args.key, args.start, args.end);
 

@@ -4,14 +4,15 @@ typedef struct {
   char *file;
   u_int32_t slot_seconds;
   u_int16_t values_per_entry;
+  int verbose;
 } create_args;
 
-static void init_trace() {
-  traceLevel = 0;
+static void init_trace(int verbose) {
+  traceLevel = verbose ? 99 : 0;
 }
 
 static void help(int code) {
-  printf("tsdb-create file slot_seconds [values_per_entry]\n");
+  printf("tsdb-create [-v] file slot_seconds [values_per_entry]\n");
   exit(code);
 }
 
@@ -35,10 +36,16 @@ static u_int32_t str_to_uint32(const char *str, const char *argname) {
 
 static void process_create_args(int argc, char *argv[], create_args *args) {
   int c;
-  while ((c = getopt(argc, argv, "h")) != -1) {
+
+  args->verbose = 0;
+
+  while ((c = getopt(argc, argv, "hv")) != -1) {
     switch (c) {
     case 'h':
       help(0);
+      break;
+    case 'v':
+      args->verbose = 1;
       break;
     default:
       help(1);
@@ -90,8 +97,8 @@ int main(int argc, char *argv[]) {
 
   create_args args;
 
-  init_trace();
   process_create_args(argc, argv, &args);
+  init_trace(args.verbose);
   check_file_exists(args.file);
   validate_slot_seconds(args.slot_seconds);
   validate_values_per_entry(args.values_per_entry);

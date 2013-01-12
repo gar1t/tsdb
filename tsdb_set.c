@@ -7,10 +7,11 @@ typedef struct {
   int values_start;
   int values_stop;
   char **argv;
+  int verbose;
 } set_args;
 
 static void help(int code) {
-  printf("tsdb-set file key [-t timestamp] [values]\n");
+  printf("tsdb-set [-v] file key [-t timestamp] [values]\n");
   exit(code);
 }
 
@@ -27,11 +28,15 @@ static void process_args(int argc, char *argv[], set_args *args) {
   int c;
 
   args->timestamp = 0;
+  args->verbose = 0;
 
-  while ((c = getopt(argc, argv, "ht:")) != -1) {
+  while ((c = getopt(argc, argv, "hvt:")) != -1) {
     switch (c) {
     case 'h':
       help(0);
+      break;
+    case 'v':
+      args->verbose = 1;
       break;
     case 't':
       args->timestamp = str_to_uint32(optarg, "timestamp");
@@ -109,16 +114,15 @@ static void set_tsdb_values(set_args *args) {
   tsdb_close(&db);
 }
 
-static void init_trace() {
-  traceLevel = 0;
+static void init_trace(int verbose) {
+  traceLevel = verbose ? 99 : 0;
 }
 
 int main(int argc, char *argv[]) {
   set_args args;
 
-  init_trace();
-
   process_args(argc, argv, &args);
+  init_trace(args.verbose);
   check_file_exists(args.file);
   set_tsdb_values(&args);
 
