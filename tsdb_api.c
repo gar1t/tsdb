@@ -304,7 +304,7 @@ static int get_map_hash_index(tsdb_handler *handler, char *name, u_int32_t *valu
     for(i=0; i<num_mappings; i++) {
       if((mappings[i].epoch_start <= handler->chunk.load_epoch)
 	 && ((mappings[i].epoch_end == 0)
-	     || (mappings[i].epoch_end <= handler->chunk.load_epoch))) {
+	     || (mappings[i].epoch_end > handler->chunk.load_epoch))) {
 	*value = mappings[i].hash_idx;
 	found = 1;
 	break;
@@ -372,7 +372,9 @@ static void set_map_hash_index(tsdb_handler *handler, char *idx, u_int32_t value
   tsdb_hash_mapping mapping;
 
   snprintf(str, sizeof(str), "map-%s", idx);
-  mapping.epoch_end = 0, mapping.hash_idx = value;
+  mapping.epoch_start = handler->chunk.load_epoch;
+  mapping.epoch_end = 0;
+  mapping.hash_idx = value;
   map_raw_set(handler, str, strlen(str), &mapping, sizeof(mapping));
 
   traceEvent(TRACE_INFO, "[SET] Mapping %s -> %u", idx, value);
