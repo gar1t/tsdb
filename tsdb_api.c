@@ -202,7 +202,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
   }
 
   /* Split chunks on the DB */
-  num_fragments = handler->chunk.chunk_mem_len / (handler->values_len * CHUNK_GROWTH);
+  num_fragments = handler->chunk.chunk_mem_len / fragment_size;
 
   for(i=0; i<num_fragments; i++) {
     u_int offset;
