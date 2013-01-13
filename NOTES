@@ -34,6 +34,13 @@ per key using tsdb_get.
 If load_on_demand is set to 1, the operation will always succeed. If set to 0,
 the operation will fail if the epoch doesn't exist.
 
+This operation has the substantial side effect of loading all of the time
+series for that specified epoch into memory. As time series are stored in one
+or more compressed fragments, this operation is not cheap.
+
+The advantage is that all of the time series for the epoch are available via a
+quick mapping of key to index offset.
+
 * Setting Values
 
 There are three operations involved in setting time series values:
@@ -84,3 +91,46 @@ Or
 - Both args are only input and are ignored on open
 
 - User needs to read from the handler to get the real values
+* To Do
+
+** Refactor map_raw_key_exists
+
+It's arguably a nit but why doesn't this use DB->exists?
+
+Would look something like this:
+
+#+begin_src c
+  static int map_raw_key_exists(tsdb_handler *handler,
+                                void *key, u_int32_t key_len) {
+    DBT key_data;
+    key_data.data = key;
+    key_data.size = key_len;
+
+    if (handler->db->exists(handler->db, NULL, &key_data, 0) == DB_NOTFOUND) {
+      return 0;
+    } else {
+      return 1;
+    }
+  }
+#+end_src
+
+** Multiple index maps pointless
+
+There's incomplete support for multiple index maps. It looks like only one
+index map is every used.
+
+I'm not sure what the idea was behind multiple indexes. Maybe this was the
+auto-expire feature talked about.
+
+You can drop a key for values before a specific epoch value. E.g.
+
+  tsdb_drop_key(&db, key, expire_at);
+
+The implementation loops through available maps and expires the first map whos
+epoch_end is 0 (the default value when the index is created).
+
+However, it's impossible to have more than one index map.
+
+The refactor should be to either implement the correct multi-map support, or
+drop any logic that iterates over multiple maps, as there can only ever be one.
+
