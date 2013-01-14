@@ -5,16 +5,17 @@ typedef struct {
   char *key;
   u_int32_t start;
   u_int32_t end;
+  u_int16_t interval;
   int verbose;
 } get_args;
 
 static void help(int code) {
-  printf("tsdb-get [-v] file key [-s start] [-e end]\n");
+  printf("tsdb-get [-v] file key [-s start] [-e end] [-i interval]\n");
   exit(code);
 }
 
 static void check_strtol_error(int no_digits, long val, int err,
-                               char *argname) {
+                               const char *argname) {
   if (no_digits
       || (err == ERANGE && (val == LONG_MAX || val == LONG_MIN))
       || (err != 0 && val == 0)) {
@@ -23,7 +24,7 @@ static void check_strtol_error(int no_digits, long val, int err,
   }
 }
 
-static int unit_seconds_val(char *units, char *argname) {
+static int unit_seconds_val(const char *units, const char *argname) {
   if (*units == '\0') {
     return 0;
   } else if (strcmp(units, "s") == 0) {
@@ -40,7 +41,8 @@ static int unit_seconds_val(char *units, char *argname) {
   }
 }
 
-static u_int32_t epoch_val(char *str, u_int32_t now, char *argname) {
+static u_int32_t epoch_val(const char *str, u_int32_t now,
+                           const char *argname) {
   char *units;
   long numval;
   int unit_seconds;
@@ -56,6 +58,22 @@ static u_int32_t epoch_val(char *str, u_int32_t now, char *argname) {
   }
 }
 
+static u_int16_t interval_val(const char *str, const char *argname) {
+  char *units;
+  long numval;
+  int unit_seconds;
+
+  errno = 0;
+  numval = strtol(str, &units, 10);
+  check_strtol_error(str == units, numval, errno, argname);
+  unit_seconds = unit_seconds_val(units, argname);
+  if (unit_seconds == 0) {
+    return numval;
+  } else {
+    return numval * unit_seconds;
+  }
+}
+
 static void process_args(int argc, char *argv[], get_args *args) {
   int c;
   u_int32_t now = time(NULL);
@@ -63,14 +81,18 @@ static void process_args(int argc, char *argv[], get_args *args) {
   args->start = now;
   args->end = now;
   args->verbose = 0;
+  args->interval = 0;
 
-  while ((c = getopt(argc, argv, "hvs:e:")) != -1) {
+  while ((c = getopt(argc, argv, "hvs:e:i:")) != -1) {
     switch (c) {
     case 's':
       args->start = epoch_val(optarg, now, "start");
       break;
     case 'e':
       args->end = epoch_val(optarg, now, "end");
+      break;
+    case 'i':
+      args->interval = interval_val(optarg, "interval");
       break;
     case 'v':
       args->verbose = 1;
@@ -162,16 +184,21 @@ static void print_epoch_vals(tsdb_handler *db, u_int32_t epoch, char *key) {
 }
 
 static void print_tsdb_values(char *file, char *key, u_int32_t start,
-                              u_int32_t end) {
+                              u_int32_t end, u_int16_t interval) {
   tsdb_handler db;
   u_int32_t cur_epoch = start;
 
   open_db(file, &db);
+
   normalize_epoch(&db, &cur_epoch);
   normalize_epoch(&db, &end);
+  if (interval <= 0) {
+    interval = db.rrd_slot_time_duration;
+  }
+
   while (cur_epoch <= end) {
     print_epoch_vals(&db, cur_epoch, key);
-    cur_epoch += db.rrd_slot_time_duration;
+    cur_epoch += interval;
   }
 }
 
@@ -181,7 +208,6 @@ int main(int argc, char *argv[]) {
   process_args(argc, argv, &args);
   init_trace(args.verbose);
   check_file_exists(args.file);
-  print_tsdb_values(args.file, args.key, args.start, args.end);
-
+  print_tsdb_values(args.file, args.key, args.start, args.end, args.interval);
   return 0;
 }
