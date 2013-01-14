@@ -61,7 +61,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
 			      DB_BTREE,
 			      (read_only_mode ? 0 : DB_CREATE),
 			      mode)) != 0) {
-    traceEvent(TRACE_ERROR, "Error while opening DB %s [%s][r/o=%u,mode=%o]", 
+    traceEvent(TRACE_ERROR, "Error while opening DB %s [%s][r/o=%u,mode=%o]",
 	       tsdb_path, db_strerror(ret), read_only_mode, mode);
     return(-1);
   }
