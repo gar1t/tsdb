@@ -249,6 +249,8 @@ void tsdb_close(tsdb_handler *handler) {
     traceEvent(TRACE_INFO, "Flushing database changes...");
 
   handler->db->close(handler->db, 0);
+
+  handler->alive_and_kicking = 0;
 }
 
 /* *********************************************************************** */
