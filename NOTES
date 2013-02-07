@@ -49,6 +49,115 @@ There are three operations involved in setting time series values:
 - Go to an epoch (tsdb_goto_epoch)
 - Set the value (tsdb_set)
 
+* Indexes
+
+Keys are associated with indexes.
+
+The index for a key depends on the epoch. tsdb supports multiple indexes per
+key -- I *suspect* because at some point, the chunk, which is a fixed size,
+will fill up (all available indexes will be used) and in order to get an index,
+tsdb will create a new map of indexes. The new map will start at the current
+epoch and will remain in effect until all of the available indexes are used.
+
+What is the point of rsv-INDEX?
+
+An index mapping is represented by a "map-INDEX" entry in the db.
+
+The mapping consists of
+
+- epoch_start, which is set to the current chunk epoch
+- epoch_end, which is set to 0, indicating that the mapping is not bounded
+- the index value
+
+When a new index is created, it's also reserved by way of a "rsv-INDEX" entry
+in the db.
+
+Indexes aren't reused -- they keep growing as needed for each key. So they must
+be "rem'd" to the range of the value array. What then of chunks?
+
+As more keys are needed for an epoch, chunks are added.
+
+From what I can tell (suspect) as time goes by and keys change, we'll have
+chunks whose sole purppose is to maintain a consistent index offset.
+
+While there's support for mapping different indexes to different epoch ranges,
+it doesn't appear that it's even possible to reset/change an index for a key.
+
+The more I look, the more it looks like the whole mapping scheme is misguided:
+
+- At no point is the map expanded to a new epoch range
+
+- If a key comes along that has an index that's beyond the current epoch's
+  range, a new chunk is added -- values are always accommodated by making room
+  rather than creating a new mapping
+
+The scheme looks like it could deteriorate over time -- indexes that land past
+the previous chunks will cause the chunk size for new epochs to grow. There
+ought to be a way to reuse indexes for new epochs to avoid this. So e.g. the
+first 10K indexes could be phased out by a another 10K indexes and have new
+epochs still use only 1 chunk.
+
+How would this work?
+
+- You'd assign indexes up to num_values (10K)
+- At num_values + 1, the index would reset to 1
+- You'd mark the epoch end for *all* indexes that the current epoch
+
+This would reset the index counter. Old indexes would be preserved because
+they're tied to the old epoch range. New indexes would be assigned based on the
+current index counter and be associated with a new mapping entry.
+
+But rather than specify explicit start and stop epochsin each map, it'd be
+better to associate the map with a range generation. E.g. an index map would
+look like this:
+
+#+begin_src c
+  typedef struct {
+    u_int8_t generation;
+    u_int32_t hash_idx;
+  } tsdb_hash_mapping;
+#+end_src
+
+The generation would be associated with a range.
+
+There'd be a current generation, which would be used for new maps.
+
+Map entries would be added in LIFO order, so that the most recent maps occurred
+first in the array.
+
+The generation ranges could be stored in an array, and referenced by the
+generation value. This would make bounds checking very fast.
+
+There'd be no reason to use idx-INDEX entries -- you'd rely strictly on the
+index counter for the current map generation.
+
+* Purging Old Data
+
+I'm slightly inclined to *not* support data deletions (it's not supported now
+anyway).
+
+I think it'd be easier to push the bruden on multi DB queries.
+
+What's the cost of querying two or more databases to collect and consolidate
+values? Using the API as it is today, it would appear that there's not much
+cost -- values are retrieved one key at a time, each at a current epoch.
+
+Using multiple DBs could have a performance increase, as operations could be
+run in parallel.
+
+But what if we wanted to purge old values?
+
+One super easy method is to simply delete the epoch entries. This would clear
+out the majority of the values.
+
+That would leave cleaning indexes up -- the map-INDEX entries would continue to
+expand -- there'd be no easy way to reclaim old indexes (i.e. indexes that are
+defunct because there are no values associated with them), nor any way to reset
+the index counter.
+
+However, for use cases where indexes don't grow beyond the 10K limit (or
+whatever), dropping old epochs is a very easy way to reclaim space.
+
 * Questions
 
 ** load_page_on_demand
@@ -91,9 +200,34 @@ Or
 - Both args are only input and are ignored on open
 
 - User needs to read from the handler to get the real values
-* To Do
 
-** Refactor map_raw_key_exists
+* Current Vision
+
+Same performance characteristics (storage, retrieval, space) of current tsdb,
+but with tag based queries.
+
+* Next Steps
+
+** TODO Clean up source
+
+The source is impossible to read. Lets format it so it doesn't suck as much:
+
+- 79 max line length
+- Sane white spacing
+- Misc cleanup
+
+** TODO Refactor map-XXX
+
+- Rename to key-XXX
+- Store only the index
+- Get rid of anything that uses, or purprotedly uses, the map ranges, multiple
+  entries, etc.
+
+** TODO Refactor rsv-XXX
+
+This is pointless. We can use the next counter authoritatively.
+
+** TODO Refactor map_raw_key_exists
 
 It's arguably a nit but why doesn't this use DB->exists?
 
@@ -114,23 +248,180 @@ Would look something like this:
   }
 #+end_src
 
-** Multiple index maps pointless
 
-There's incomplete support for multiple index maps. It looks like only one
-index map is every used.
+* Longer Term
 
-I'm not sure what the idea was behind multiple indexes. Maybe this was the
-auto-expire feature talked about.
+** Lookup by index
 
-You can drop a key for values before a specific epoch value. E.g.
+Provide an API for looking up epoch values using the epoch array offset
+directly, rather than dereference it each time:
 
-  tsdb_drop_key(&db, key, expire_at);
+  tsdb_get_by_index(db, index)
 
-The implementation loops through available maps and expires the first map whos
-epoch_end is 0 (the default value when the index is created).
+This would require a corresponding function for getting a key's array offset:
 
-However, it's impossible to have more than one index map.
+  tsdb_get_key_index(db, key)
 
-The refactor should be to either implement the correct multi-map support, or
-drop any logic that iterates over multiple maps, as there can only ever be one.
+We'd use this for range queries of a particular key by looking up the index
+first, then using it for each epoch.
 
+** Tags
+
+Support a new index type: a tab.
+
+The function would look like this:
+
+  tsdb_add_key_tags(db, key, tags)
+
+E.g.
+
+  tsdb_add_key_tag(db, "test-123", "metric=cpu")
+  tsdb_add_key_tag(db, "test-123", "server_id=123")
+  tsdb_add_key_tag(db, "test-123", "server_size=small")
+
+For each tag, ensure a tag-XXX entry in the database.
+
+Each tag-XXX element would be an array. Each element in the array would be a 0
+or 1. 1 indicates that the tag applies to the epoch values at the correponding
+index. E.g. if position 0 of the tag array contained a 1, it would indicate
+that the tag applied to epoch values at position 1.
+
+Let's consider an example. We'll start by adding a value to an empty database:
+
+  tsdb_goto_epoch(db, 1)
+  tsdb_set(db, "test-123", 56)
+
+We have in our db the following:
+
+  key-test-123: 0
+  1-0: [ 56 ]
+
+Let's add another key:
+
+  tsdb_set(db, "test-456", 82)
+
+Our db:
+
+  key-test-123: 0
+  key-test-456: 1
+  1-0: [ 56, 82 ]
+
+Now let's tag a key:
+
+  tsdb_add_key_tag(db, "test-123", "metric=cpu")
+
+Our db has a new value:
+
+  tag-metric=cpu: [ 1 ]
+
+This indicates that the epoch values stored at index 0 (i.e. key test-123) have
+the tag "metric=cpu".
+
+We'll do the same for test-456:
+
+   tsdb_add_key_tag(db, "test-456", "metric=cpu")
+
+Now our tag element looks like this:
+
+  tag-metric=cpu: [ 1, 1 ]
+
+Let's add some more tags:
+
+   tsdb_add_key_tag(db, "test-123", "server_id=123")
+   tsdb_add_key_tag(db, "test-123", "server_size=small")
+   tsdb_add_key_tag(db, "test-456", "server_id=456")
+   tsdb_add_key_tag(db, "test-456", "server_size=large")
+
+Here's the full listing of all tag elements:
+
+  tag-metric=cpu:        [ 1, 1 ]
+  tag-server_size=small: [ 1, 0 ]
+  tag-server_size=large: [ 0, 1 ]
+  tag-server_id=123:     [ 1, 0 ]
+  tag-server_id=456:     [ 0, 1 ]
+
+Here's a query for metric=cpu & server_size=small
+
+  tsdb_get_by_tag_intersection(db, ["metric=cpu", "server_size=small"])
+
+This is how we'd implement answer the query:
+
+- Load the arrays for each tag
+- Apply a logic AND operation for each array cell, up to the shorted array
+- Return values for epoch positions for each resulting 1
+
+E.g.
+
+  tag-metric=cpu:        [ 1, 1 ]
+  tag-server_size=small: [ 1, 0 ]
+  AND:                   [ 1, 0 ]
+
+We can implement a similar function for the union using OR. So the function:
+
+  tsdb_get_by_tag_union(db, ["metric=cpu", "server_size=small"])
+
+would be implemented like this:
+
+  tag-metric=cpu:        [ 1, 1 ]
+  tag-server_size=small: [ 1, 0 ]
+  OR:                    [ 1, 1 ]
+
+We can implement NOT operations, e.g.
+
+  tsdb_get_by_tag_not_intersection(db, ["metric=cpu", "server_size=small"])
+  tsdb_get_by_tag_not_union(db, ["metric=cpu", "server_size=small"])
+
+By applying a NOT to the result.
+
+The most flexible scheme would be a simple query language.
+
+Here's a union of 2 tags. Each tag is preceded by its byte length.
+
+  tsdb_query(db, [ "u" 2 10 "metric=cpu" 17 "server_size=small"])
+
+Let's say I want all of the cpu metrics for servers that aren't small:
+
+  tsdb_query(db, [ "i" 2 "t" 10 "metric=cpu" "n" "t" 17 "server_size=small" ])
+
+Here's the key we're using so far:
+
+  i = intersection
+  u = union
+  n = not
+  t = tag
+
+So we'd implement this query in these steps:
+
+1. Get the epoch indexes for the tag metric=cpu
+
+  tag-metric=cpu:        [ 1, 1 ]
+
+2. Get the epoch indexes for the tag server_size=small
+
+  tag-server_size=small: [ 1, 0 ]
+
+3. Apply NOT to the result from step 2
+
+  NOT tag-server_size=small: [ 0, 1 ]
+
+4. Apply AND to the results from steps 1 and 3
+
+  tag-metric=cpu:            [ 1, 1 ]
+  NOT tag-server_size=small: [ 0, 1 ]
+  AND:                       [ 0, 1 ]
+
+We could obviously use bit arrays, which would reduce our space requirements
+for tagging by 32x. This at some minor code complexity.
+
+We could minimize the storage and IO requirements for these tag indexes further
+using compression, as is done currently with epoch values.
+
+A possible performance problem with tags is that they have to be read fully
+from the database, updated, and then stored again. If a tag array didn't have
+to be read from the database, it could be updated in constant time.
+
+However, before we worry too much about performance, we should consider the
+caching that occurs in the database. It may be pointless to cache tag arrays if
+they're already being cached by the database. As long as we're not compressing
+the array, it *might* be the case that we have direct access to the database's
+value in memory.
