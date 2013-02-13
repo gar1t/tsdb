@@ -18,24 +18,12 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <stdio.h>
-#include <errno.h>
 #include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <ctype.h>
-#include <strings.h>
 #include <limits.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <sys/mman.h> /* mmap() */
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <db.h>
 #include <errno.h>
-#include <sys/file.h>
 
 #include "tsdb_trace.h"
 #include "quicklz.h"
