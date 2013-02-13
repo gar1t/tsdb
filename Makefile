@@ -1,7 +1,6 @@
 CC           = gcc -g
-WARNS        =  -Wshadow -Wpointer-arith -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
-INCLUDE      = -I. -I /opt/local/include $(WARNS)
-CFLAGS       = -Wall ${INCLUDE} # -fPIC
+WARNS        = -Wshadow -Wpointer-arith -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
+CFLAGS       = -Wall -I.
 LDFLAGS      = -L /opt/local/lib
 SYSLIBS      = -lrrd -ldb
 
@@ -14,7 +13,6 @@ TARGETS     = $(TSDB_LIB) test test2 tsdbExport tsdb-create tsdb-info \
 all: $(TARGETS)
 
 %.o: %.c %.h
-#	@echo "=*= making object $@ =*="
 	${CC} ${CFLAGS} ${INCLUDE} -c $< -o $@
 
 
