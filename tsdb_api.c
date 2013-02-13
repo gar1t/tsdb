@@ -20,16 +20,71 @@
 
 #include "tsdb_api.h"
 
-static void map_raw_set(tsdb_handler *handler,
-			void *key, u_int32_t key_len,
-			void *value, u_int32_t value_len);
+static void db_set(tsdb_handler *handler,
+                   void *key, u_int32_t key_len,
+                   void *value, u_int32_t value_len) {
+    DBT key_data, data;
 
-static void map_raw_delete(tsdb_handler *handler,
-			   void *key, u_int32_t key_len);
+    if (handler->read_only_mode) {
+        trace_warning("Unable to set value (read-only mode)");
+        return;
+    }
 
-static int map_raw_get(tsdb_handler *handler,
-		       void *key, u_int32_t key_len,
-		       void **value, u_int32_t *value_len);
+    memset(&key_data, 0, sizeof(key_data));
+    memset(&data, 0, sizeof(data));
+    key_data.data = key, key_data.size = key_len;
+    data.data = value, data.size = value_len;
+
+    if (handler->db->put(handler->db, NULL, &key_data, &data, 0) != 0) {
+        trace_warning("Error while map_set(%u, %u)", key, value);
+    }
+}
+
+static void db_del(tsdb_handler *handler,
+                   void *key, u_int32_t key_len) {
+    DBT key_data;
+
+    if (handler->read_only_mode) {
+        trace_warning("Unable to delete value (read-only mode)");
+        return;
+    }
+
+    memset(&key_data, 0, sizeof(key_data));
+    key_data.data = key, key_data.size = key_len;
+
+    if (handler->db->del(handler->db, NULL, &key_data, 0) != 0) {
+        trace_warning("Error while deleting key");
+    }
+}
+
+static int db_get(tsdb_handler *handler,
+                  void *key, u_int32_t key_len,
+                  void **value, u_int32_t *value_len) {
+    DBT key_data, data;
+
+    memset(&key_data, 0, sizeof(key_data));
+    memset(&data, 0, sizeof(data));
+
+    key_data.data = key, key_data.size = key_len;
+    if (handler->db->get(handler->db, NULL, &key_data, &data, 0) == 0) {
+        *value = data.data, *value_len = data.size;
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+static int db_key_exists(tsdb_handler *handler,
+                         void *key, u_int32_t key_len) {
+    void *value;
+    u_int value_len;
+
+    if (db_get(handler, key, key_len, &value, &value_len) == 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
 
 int tsdb_open(char *tsdb_path, tsdb_handler *handler,
 	      u_int16_t *num_values_per_entry,
@@ -60,44 +115,45 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
         return -1;
     }
 
-    if (map_raw_get(handler, "lowest_free_index",
-                    strlen("lowest_free_index"), &value, &value_len) == 0) {
+    if (db_get(handler,
+               "lowest_free_index", strlen("lowest_free_index"),
+               &value, &value_len) == 0) {
         handler->lowest_free_index = *((u_int32_t*)value);
     } else {
         if (!handler->read_only_mode) {
             handler->lowest_free_index = 0;
-            map_raw_set(handler, "lowest_free_index",
-                        strlen("lowest_free_index"),
-                        &handler->lowest_free_index,
-                        sizeof(handler->lowest_free_index));
+            db_set(handler, "lowest_free_index",
+                   strlen("lowest_free_index"),
+                   &handler->lowest_free_index,
+                   sizeof(handler->lowest_free_index));
         }
     }
 
-    if (map_raw_get(handler, "rrd_slot_time_duration",
-                    strlen("rrd_slot_time_duration"),
-                    &value, &value_len) == 0) {
+    if (db_get(handler, "rrd_slot_time_duration",
+               strlen("rrd_slot_time_duration"),
+               &value, &value_len) == 0) {
         handler->rrd_slot_time_duration = *((u_int32_t*)value);
     } else {
         if (!handler->read_only_mode) {
             handler->rrd_slot_time_duration = rrd_slot_time_duration;
-            map_raw_set(handler, "rrd_slot_time_duration",
-                        strlen("rrd_slot_time_duration"),
-                        &handler->rrd_slot_time_duration,
-                        sizeof(handler->rrd_slot_time_duration));
+            db_set(handler, "rrd_slot_time_duration",
+                   strlen("rrd_slot_time_duration"),
+                   &handler->rrd_slot_time_duration,
+                   sizeof(handler->rrd_slot_time_duration));
         }
     }
 
-    if (map_raw_get(handler, "num_values_per_entry",
-                    strlen("num_values_per_entry"), &value, &value_len) == 0) {
+    if (db_get(handler, "num_values_per_entry",
+               strlen("num_values_per_entry"), &value, &value_len) == 0) {
         *num_values_per_entry = handler->num_values_per_entry =
             *((u_int16_t*)value);
     } else {
         if (!handler->read_only_mode) {
             handler->num_values_per_entry = *num_values_per_entry;
-            map_raw_set(handler, "num_values_per_entry",
-                        strlen("num_values_per_entry"),
-                        &handler->num_values_per_entry,
-                        sizeof(handler->num_values_per_entry));
+            db_set(handler, "num_values_per_entry",
+                   strlen("num_values_per_entry"),
+                   &handler->num_values_per_entry,
+                   sizeof(handler->num_values_per_entry));
         }
     }
 
@@ -113,72 +169,6 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     handler->alive_and_kicking = 1;
 
     return 0;
-}
-
-static void map_raw_delete(tsdb_handler *handler,
-			   void *key, u_int32_t key_len) {
-    DBT key_data;
-
-    if (handler->read_only_mode) {
-        trace_warning("Unable to delete value (read-only mode)");
-        return;
-    }
-
-    memset(&key_data, 0, sizeof(key_data));
-    key_data.data = key, key_data.size = key_len;
-
-    if (handler->db->del(handler->db, NULL, &key_data, 0) != 0) {
-        trace_warning("Error while deleting key");
-    }
-}
-
-static int map_raw_key_exists(tsdb_handler *handler,
-			      void *key, u_int32_t key_len) {
-    void *value;
-    u_int value_len;
-
-    if (map_raw_get(handler, key, key_len, &value, &value_len) == 0) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-static void map_raw_set(tsdb_handler *handler,
-			void *key, u_int32_t key_len,
-			void *value, u_int32_t value_len) {
-    DBT key_data, data;
-
-    if (handler->read_only_mode) {
-        trace_warning("Unable to set value (read-only mode)");
-        return;
-    }
-
-    memset(&key_data, 0, sizeof(key_data));
-    memset(&data, 0, sizeof(data));
-    key_data.data = key, key_data.size = key_len;
-    data.data = value, data.size = value_len;
-
-    if (handler->db->put(handler->db, NULL, &key_data, &data, 0) != 0) {
-        trace_warning("Error while map_set(%u, %u)", key, value);
-    }
-}
-
-static int map_raw_get(tsdb_handler *handler,
-		       void *key, u_int32_t key_len,
-		       void **value, u_int32_t *value_len) {
-    DBT key_data, data;
-
-    memset(&key_data, 0, sizeof(key_data));
-    memset(&data, 0, sizeof(data));
-
-    key_data.data = key, key_data.size = key_len;
-    if (handler->db->get(handler->db, NULL, &key_data, &data, 0) == 0) {
-        *value = data.data, *value_len = data.size;
-        return 0;
-    } else {
-        return -1;
-    }
 }
 
 static void tsdb_flush_chunk(tsdb_handler *handler) {
@@ -215,7 +205,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
 
             snprintf(str, sizeof(str), "%u-%u", handler->chunk.begin_epoch, i);
 
-            map_raw_set(handler, str, strlen(str), compressed, compressed_len);
+            db_set(handler, str, strlen(str), compressed, compressed_len);
         } else {
             trace_info("Skipping fragment %u (unchanged)", i);
         }
@@ -233,9 +223,10 @@ void tsdb_close(tsdb_handler *handler) {
     }
 
     if (!handler->read_only_mode) {
-        map_raw_set(handler, "lowest_free_index", strlen("lowest_free_index"),
-                    &handler->lowest_free_index,
-                    sizeof(handler->lowest_free_index));
+        db_set(handler,
+               "lowest_free_index", strlen("lowest_free_index"),
+               &handler->lowest_free_index,
+               sizeof(handler->lowest_free_index));
     }
 
     tsdb_flush_chunk(handler);
@@ -260,21 +251,21 @@ static void reserve_hash_index(tsdb_handler *handler, u_int32_t idx) {
     char str[32];
 
     snprintf(str, sizeof(str), "rsv-%u", idx);
-    map_raw_set(handler, str, strlen(str), "", 0);
+    db_set(handler, str, strlen(str), "", 0);
 }
 
 static void unreserve_hash_index(tsdb_handler *handler, u_int32_t idx) {
     char str[32];
 
     snprintf(str, sizeof(str), "rsv-%u", idx);
-    map_raw_delete(handler, str, strlen(str));
+    db_del(handler, str, strlen(str));
 }
 
 static int hash_index_in_use(tsdb_handler *handler, u_int32_t idx) {
     char str[32];
 
     snprintf(str, sizeof(str), "rsv-%u", idx);
-    return map_raw_key_exists(handler, str, strlen(str));
+    return db_key_exists(handler, str, strlen(str));
 }
 
 static int get_map_hash_index(tsdb_handler *handler, char *name,
@@ -285,7 +276,7 @@ static int get_map_hash_index(tsdb_handler *handler, char *name,
 
     snprintf(str, sizeof(str), "map-%s", name);
 
-    if (map_raw_get(handler, str, strlen(str), &ptr, &len) == 0) {
+    if (db_get(handler, str, strlen(str), &ptr, &len) == 0) {
         tsdb_hash_mapping *mappings = (tsdb_hash_mapping*)ptr;
         u_int i, found = 0, num_mappings = len / sizeof(tsdb_hash_mapping);
 
@@ -313,7 +304,7 @@ static int drop_map_hash_index(tsdb_handler *handler, char *idx,
 
     snprintf(str, sizeof(str), "map-%s", idx);
 
-    if (map_raw_get(handler, str, strlen(str), &ptr, &len) == 0) {
+    if (db_get(handler, str, strlen(str), &ptr, &len) == 0) {
         tsdb_hash_mapping *mappings = (tsdb_hash_mapping*)ptr;
         u_int i, found = 0, num_mappings = len / sizeof(tsdb_hash_mapping);
 
@@ -321,7 +312,7 @@ static int drop_map_hash_index(tsdb_handler *handler, char *idx,
             if (mappings[i].epoch_end == 0) {
                 mappings[i].epoch_end = epoch_value;
                 found = 1;
-                map_raw_set(handler, str, strlen(str), &ptr, len);
+                db_set(handler, str, strlen(str), &ptr, len);
                 break;
             }
         }
@@ -355,7 +346,7 @@ static void set_map_hash_index(tsdb_handler *handler, char *idx,
     mapping.epoch_start = handler->chunk.load_epoch;
     mapping.epoch_end = 0;
     mapping.hash_idx = value;
-    map_raw_set(handler, str, strlen(str), &mapping, sizeof(mapping));
+    db_set(handler, str, strlen(str), &mapping, sizeof(mapping));
 
     trace_info("[SET] Mapping %s -> %u", idx, value);
 }
@@ -382,7 +373,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
     }
 
     snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
-    rc = map_raw_get(handler, str, strlen(str), &value, &value_len);
+    rc = db_get(handler, str, strlen(str), &value, &value_len);
 
     if (rc == -1) {
         if (!create_if_needed) {
@@ -446,7 +437,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             handler->chunk.chunk_mem = ptr;
 
             snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
-            if (map_raw_get(handler, str, strlen(str),
+            if (db_get(handler, str, strlen(str),
                             &value, &value_len) == -1)
                 break; /* No more fragments */
         }
@@ -510,7 +501,7 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
 
         snprintf(str, sizeof(str), "%u-%u", handler->chunk.load_epoch,
                  fragment_id);
-        if (map_raw_get(handler, str, strlen(str), &value, &value_len) == -1) {
+        if (db_get(handler, str, strlen(str), &value, &value_len) == -1) {
             return -1;
         }
 
