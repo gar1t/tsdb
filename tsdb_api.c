@@ -40,23 +40,6 @@ static void db_set(tsdb_handler *handler,
     }
 }
 
-static void db_del(tsdb_handler *handler,
-                   void *key, u_int32_t key_len) {
-    DBT key_data;
-
-    if (handler->read_only_mode) {
-        trace_warning("Unable to delete value (read-only mode)");
-        return;
-    }
-
-    memset(&key_data, 0, sizeof(key_data));
-    key_data.data = key, key_data.size = key_len;
-
-    if (handler->db->del(handler->db, NULL, &key_data, 0) != 0) {
-        trace_warning("Error while deleting key");
-    }
-}
-
 static int db_get(tsdb_handler *handler,
                   void *key, u_int32_t key_len,
                   void **value, u_int32_t *value_len) {
@@ -71,18 +54,6 @@ static int db_get(tsdb_handler *handler,
         return 0;
     } else {
         return -1;
-    }
-}
-
-static int db_key_exists(tsdb_handler *handler,
-                         void *key, u_int32_t key_len) {
-    void *value;
-    u_int value_len;
-
-    if (db_get(handler, key, key_len, &value, &value_len) == 0) {
-        return 1;
-    } else {
-        return 0;
     }
 }
 
@@ -222,13 +193,6 @@ void tsdb_close(tsdb_handler *handler) {
         return;
     }
 
-    if (!handler->read_only_mode) {
-        db_set(handler,
-               "lowest_free_index", strlen("lowest_free_index"),
-               &handler->lowest_free_index,
-               sizeof(handler->lowest_free_index));
-    }
-
     tsdb_flush_chunk(handler);
 
     if (!handler->read_only_mode) {
@@ -245,27 +209,6 @@ u_int32_t normalize_epoch(tsdb_handler *handler, u_int32_t *epoch) {
     *epoch += timezone - daylight * 3600;
 
     return *epoch;
-}
-
-static void reserve_hash_index(tsdb_handler *handler, u_int32_t idx) {
-    char str[32];
-
-    snprintf(str, sizeof(str), "rsv-%u", idx);
-    db_set(handler, str, strlen(str), "", 0);
-}
-
-static void unreserve_hash_index(tsdb_handler *handler, u_int32_t idx) {
-    char str[32];
-
-    snprintf(str, sizeof(str), "rsv-%u", idx);
-    db_del(handler, str, strlen(str));
-}
-
-static int hash_index_in_use(tsdb_handler *handler, u_int32_t idx) {
-    char str[32];
-
-    snprintf(str, sizeof(str), "rsv-%u", idx);
-    return db_key_exists(handler, str, strlen(str));
 }
 
 static int get_map_hash_index(tsdb_handler *handler, char *name,
@@ -294,47 +237,6 @@ static int get_map_hash_index(tsdb_handler *handler, char *name,
     }
 
     return -1;
-}
-
-static int drop_map_hash_index(tsdb_handler *handler, char *idx,
-			       u_int32_t epoch_value, u_int32_t *value) {
-    void *ptr;
-    u_int32_t len;
-    char str[32];
-
-    snprintf(str, sizeof(str), "map-%s", idx);
-
-    if (db_get(handler, str, strlen(str), &ptr, &len) == 0) {
-        tsdb_hash_mapping *mappings = (tsdb_hash_mapping*)ptr;
-        u_int i, found = 0, num_mappings = len / sizeof(tsdb_hash_mapping);
-
-        for (i=0; i<num_mappings; i++) {
-            if (mappings[i].epoch_end == 0) {
-                mappings[i].epoch_end = epoch_value;
-                found = 1;
-                db_set(handler, str, strlen(str), &ptr, len);
-                break;
-            }
-        }
-
-        return found ? 0 : -1;
-    }
-
-    return -1;
-}
-
-void tsdb_drop_key(tsdb_handler *handler,
-                   char *hash_name,
-                   u_int32_t epoch_value) {
-    u_int32_t hash_idx;
-
-    if (drop_map_hash_index(handler, hash_name,
-                            epoch_value, &hash_idx) == 0) {
-        trace_info("Index %s mapped to hash %u", hash_name, hash_idx);
-        unreserve_hash_index(handler, hash_idx);
-    } else {
-        trace_warning("Unable to drop key %s", hash_name);
-    }
 }
 
 static void set_map_hash_index(tsdb_handler *handler, char *idx,
@@ -467,15 +369,12 @@ static int mapIndexToHash(tsdb_handler *handler, char *idx,
         return -1;
     }
 
-    while (1) {
-        *value = handler->lowest_free_index++;
-
-        if (!hash_index_in_use(handler, *value)) {
-            set_map_hash_index(handler, idx, *value);
-            reserve_hash_index(handler, *value);
-            break;
-        }
-    }
+    *value = handler->lowest_free_index++;
+    set_map_hash_index(handler, idx, *value);
+    db_set(handler,
+           "lowest_free_index", strlen("lowest_free_index"),
+           &handler->lowest_free_index,
+           sizeof(handler->lowest_free_index));
 
     return 0;
 }
