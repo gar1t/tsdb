@@ -1,47 +1,103 @@
-/*
- *
- *  Copyright (C) 2011 IIT/CNR (http://www.iit.cnr.it/en)
- *                     Luca Deri <deri@ntop.org>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+#include <sys/stat.h>
 
 #include "tsdb_api.h"
 
+static int file_exists(char *filename) {
+    FILE *file;
+    if ((file = fopen(filename, "r"))) {
+        fclose(file);
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static char *get_file_arg(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "usage: test TEST-DB\n");
+        exit(1);
+    }
+    char *file = argv[1];
+    if (file_exists(file)) {
+        fprintf(stderr, "%s exists\n", file);
+        exit(1);
+    }
+    return file;
+}
+
+static void check(int result, char *msg) {
+    if (result != 0) {
+        fprintf(stderr, "Unexpected result from %s: %i", msg, result);
+        exit(1);
+    }
+}
+
+static void check_read_val(uint val, uint expected, char *key) {
+    if (val != expected) {
+        fprintf(stderr, "Got %u for %s, expected %u\n", val, key, expected);
+        exit(1);
+    }
+}
+
+#define num_epochs 10000
+#define slot_seconds 60
+#define num_keys 100
+
 int main(int argc, char *argv[]) {
-  char *tsdb_path = "my.tsdb";
-  tsdb_handler handler;
-  u_int32_t num_hash_indexes = 1000000, i;
-  u_int16_t num_values_per_entry = 1;
 
-  traceLevel = 99;
+    char *file = get_file_arg(argc, argv);
+    traceLevel = 0;
 
-  if(tsdb_open(tsdb_path, &handler, &num_values_per_entry, 86400 /* rrd_slot_time_duration */, 0) != 0)
-    return(-1);
+    tsdb_handler db;
+    int ret;
+    int cur, start, stop;
+    char key[255];
+    uint i;
+    uint *read_val;
 
-  for(i=0; i<8; i++) {
-    traceEvent(TRACE_INFO, "Run %u", i);
+    // open/create db
 
-    if(tsdb_goto_epoch(&handler, time(NULL)-(86400*i), 
-			1 /* create_if_needed */,
-			1 /* growable */,
-			num_hash_indexes) == -1)
-      return(-1);
-  }
+    u_int16_t vals_per_entry = 1;
+    ret = tsdb_open(file, &db, &vals_per_entry, slot_seconds, 0);
+    check(ret, "tsdb_open");
 
-  tsdb_close(&handler);
+    // move through epochs for writes
 
-  return(0);
+    start = 1000000000;
+    stop = start + num_epochs * slot_seconds;
+
+    for (cur = start; cur <= stop; cur += slot_seconds) {
+
+        ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
+        check(ret, "tsdb_goto_epoch");
+
+        // write fields
+
+        for (i = 1; i <= num_keys; i++) {
+            sprintf(key, "key-%i", i);
+            ret = tsdb_set(&db, key, &i);
+            check(ret, "tsdb_set");
+        }
+    }
+
+    // move through epochs for reads
+
+    for (cur = start; cur <= stop; cur += slot_seconds) {
+
+        ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
+        check(ret, "tsdb_goto_epoch");
+
+        // read fields
+
+        for (i = 1; i <= num_keys; i++) {
+            sprintf(key, "key-%i", i);
+            ret = tsdb_get(&db, key, &read_val);
+            check(ret, "tsdb_get");
+            check_read_val(*read_val, i, key);
+        }
+    }
+
+    tsdb_close(&db);
+
+    return 0;
 }
