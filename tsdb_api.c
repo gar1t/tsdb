@@ -179,14 +179,14 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
 
     if (!handler->chunk.chunk_mem) return;
 
-    new_len = handler->chunk.chunk_mem_len + 400 /* Static value */;
+    new_len = handler->chunk.chunk_mem_len + CHUNK_LEN_PADDING;
     compressed = (char*)malloc(new_len);
     if (!compressed) {
         trace_warning("Not enough memory (%u bytes)", new_len);
         return;
     }
 
-    /* Split chunks on the DB */
+    // Split chunks on the DB
     num_fragments = handler->chunk.chunk_mem_len / fragment_size;
 
     for (i=0; i<num_fragments; i++) {
@@ -361,7 +361,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
     u_int32_t value_len, fragment_id = 0;
     char str[32];
 
-    /* Flush ond chunk if loaded */
+    // Flush ond chunk if loaded
     tsdb_flush_chunk(handler);
 
     normalize_epoch(handler, &epoch_value);
@@ -383,7 +383,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             trace_info("Moving to goto epoch %u", epoch_value);
         }
 
-        /* Create the entry */
+        // Create the entry
         handler->chunk.begin_epoch =
             epoch_value, handler->chunk.num_hash_indexes = CHUNK_GROWTH;
         handler->chunk.chunk_mem_len =
@@ -400,7 +400,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         memset(handler->chunk.chunk_mem, handler->default_unknown_value,
                handler->chunk.chunk_mem_len);
     } else {
-        /* We need to decompress data and glue up all fragments */
+        // We need to decompress data and glue up all fragments
         u_int32_t len, offset = 0;
         u_int8_t *ptr;
 
@@ -439,7 +439,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
             if (db_get(handler, str, strlen(str),
                             &value, &value_len) == -1)
-                break; /* No more fragments */
+                break; // No more fragments
         }
 
         handler->chunk.begin_epoch = epoch_value;
@@ -456,7 +456,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 
 static int mapIndexToHash(tsdb_handler *handler, char *idx,
 			  u_int32_t *value, u_int8_t create_idx_if_needed) {
-    /* Check if this is a known value */
+    // Check if this is a known value
     if (get_map_hash_index(handler, idx, value) == 0) {
         trace_info("Index %s mapped to hash %u", idx, *value);
         return 0;
@@ -497,7 +497,7 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
         char str[32];
         void *value;
 
-        /* We need to load the epoch handler->chunk.load_epoch/fragment_id */
+        // We need to load the epoch handler->chunk.load_epoch/fragment_id
 
         snprintf(str, sizeof(str), "%u-%u", handler->chunk.load_epoch,
                  fragment_id);
@@ -523,7 +523,7 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
             handler->chunk.chunk_mem_len / handler->values_len;
         handler->chunk.base_index = fragment_id * CHUNK_GROWTH;
 
-        /* Shift index */
+        // Shift index
         hash_index -= handler->chunk.base_index;
     }
 
@@ -562,8 +562,8 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
         }
     }
 
-    /* All hashes of one day are one attached to the other: fast insert,
-       slow data extraction */
+    // All hashes of one day are one attached to the other: fast insert,
+    // slow data extraction
     *offset = handler->values_len * hash_index;
 
     if (*offset >= handler->chunk.chunk_mem_len) {
@@ -598,8 +598,7 @@ int tsdb_set(tsdb_handler *handler,
         value = (tsdb_value*)(&handler->chunk.chunk_mem[offset]);
         memcpy(value, value_to_store, handler->values_len);
 
-        /* Mark a fragment as changed */
-
+        // Mark a fragment as changed
         if (fragment_id > MAX_NUM_FRAGMENTS) {
             trace_error("Internal error [%u > %u]",
                         fragment_id, MAX_NUM_FRAGMENTS);

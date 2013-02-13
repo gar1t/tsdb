@@ -29,6 +29,7 @@
 #include "quicklz.h"
 
 #define CHUNK_GROWTH 10000
+#define CHUNK_LEN_PADDING 400
 #define MAX_NUM_FRAGMENTS 16384
 
 typedef struct {
