@@ -28,11 +28,8 @@
 #include "tsdb_trace.h"
 #include "quicklz.h"
 
-/* ************************************************** */
-
-//#define CHUNK_GROWTH        100000
-#define CHUNK_GROWTH        10000
-#define MAX_NUM_FRAGMENTS      16384
+#define CHUNK_GROWTH 10000
+#define MAX_NUM_FRAGMENTS 16384
 
 typedef struct {
   u_int8_t *chunk_mem;
@@ -49,30 +46,24 @@ typedef struct {
 typedef u_int32_t tsdb_value;
 
 typedef struct {
-  u_int8_t  alive_and_kicking;
-  u_int8_t  read_only_mode;              /* Mode used to open the db file */
-  u_int16_t num_values_per_entry;        /* How many tsdb_value will be specified per slot */
-  u_int16_t values_len;                  /* Size of this value */
-  u_int32_t default_unknown_value;       /* Default 0 */
-  u_int32_t lowest_free_index;           /* Hint for accelerating the assignment of free indexes */
-  u_int32_t rrd_slot_time_duration;      /* (sec) */
-  qlz_state_compress state_compress;     /* */
-  qlz_state_decompress state_decompress; /* */
-
-  /* Chunks */
+  u_int8_t alive_and_kicking;
+  u_int8_t read_only_mode;
+  u_int16_t num_values_per_entry;
+  u_int16_t values_len;
+  u_int32_t default_unknown_value;
+  u_int32_t lowest_free_index;
+  u_int32_t rrd_slot_time_duration;
+  qlz_state_compress state_compress;
+  qlz_state_decompress state_decompress;
   tsdb_chunk chunk;
-
-  /* Index mapping hash */
   DB *db;
 } tsdb_handler;
 
 typedef struct {
-  u_int32_t epoch_start; /* Epoch since this mapping is valid       */
-  u_int32_t epoch_end;   /* Epoch until which this mapping is valid */
+  u_int32_t epoch_start;
+  u_int32_t epoch_end;
   u_int32_t hash_idx;
 } tsdb_hash_mapping;
-
-/* ************************************************** */
 
 extern int  tsdb_open(char *tsdb_path, tsdb_handler *handler,
 		      u_int16_t *num_values_per_entry,

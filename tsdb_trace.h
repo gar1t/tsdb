@@ -18,11 +18,10 @@
  *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#define TRACE_ERROR     0, __FILE__, __LINE__
-#define TRACE_WARNING   1, __FILE__, __LINE__
-#define TRACE_NORMAL    2, __FILE__, __LINE__
-#define TRACE_INFO      3, __FILE__, __LINE__
+#define TRACE_ERROR     1, __FILE__, __LINE__
+#define TRACE_WARNING   2, __FILE__, __LINE__
+#define TRACE_NORMAL    3, __FILE__, __LINE__
+#define TRACE_INFO      4, __FILE__, __LINE__
 
 extern int traceLevel;
 extern void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...);
-

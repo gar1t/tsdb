@@ -24,44 +24,48 @@
 int traceLevel = 2;
 
 void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...) {
-  va_list va_ap;
+    va_list va_ap;
 
-  if(eventTraceLevel <= traceLevel) {
-    char buf[2048], out_buf[640];
-    char theDate[32], *extra_msg = "";
-    time_t theTime = time(NULL);
+    if (eventTraceLevel <= traceLevel) {
+        char buf[2048], out_buf[640];
+        char theDate[32], *extra_msg = "";
+        time_t theTime = time(NULL);
 
-    va_start (va_ap, format);
+        va_start (va_ap, format);
 
-    /* We have two paths - one if we're logging, one if we aren't
-     *   Note that the no-log case is those systems which don't support it (WIN32),
-     *                                those without the headers !defined(USE_SYSLOG)
-     *                                those where it's parametrically off...
-     */
+        /* We have two paths - one if we're logging, one if we aren't
+         * Note that the no-log case is those systems which don't support
+         * it (WIN32), those without the headers !defined(USE_SYSLOG)
+         * those where it's parametrically off...
+         */
 
-    memset(buf, 0, sizeof(buf));
-    strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
+        memset(buf, 0, sizeof(buf));
+        strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
 
-    vsnprintf(buf, sizeof(buf)-1, format, va_ap);
+        vsnprintf(buf, sizeof(buf)-1, format, va_ap);
 
-    if(eventTraceLevel == 0 /* TRACE_ERROR */)
-      extra_msg = "ERROR: ";
-    else if(eventTraceLevel == 1 /* TRACE_WARNING */)
-      extra_msg = "WARNING: ";
+        if (eventTraceLevel == 0) {
+            extra_msg = "ERROR: ";
+        } else if(eventTraceLevel == 1) {
+            extra_msg = "WARNING: ";
+        }
 
-    while(buf[strlen(buf)-1] == '\n') buf[strlen(buf)-1] = '\0';
+        while (buf[strlen(buf)-1] == '\n') {
+            buf[strlen(buf)-1] = '\0';
+        }
 
-    snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate,
+        snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate,
 #ifdef WIN32
-	     strrchr(file, '\\')+1,
+                 strrchr(file, '\\') + 1,
 #else
-	     file,
+                 file,
 #endif
-	     line, extra_msg, buf);
+                 line, extra_msg, buf);
 
-    printf("%s\n", out_buf);
-  }
+        printf("%s\n", out_buf);
+    }
 
-  fflush(stdout);
-  va_end(va_ap);
+    fflush(stdout);
+    va_end(va_ap);
 }
+

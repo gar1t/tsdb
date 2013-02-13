@@ -208,13 +208,18 @@ but with tag based queries.
 
 * Next Steps
 
-** TODO Clean up source
+** DONE Clean up source
 
-The source is impossible to read. Lets format it so it doesn't suck as much:
+Source code could use some reformatting:
 
 - 79 max line length
-- Sane white spacing
+- Improved white spacing
 - Misc cleanup
+
+** TODO traceEvent to trace_info, etc
+** TODO Exit on impossible conditions
+
+malloc, e.g. should cause an immediate exit.
 
 ** TODO Refactor map-XXX
 
