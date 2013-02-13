@@ -5,7 +5,7 @@ CFLAGS       = -Wall ${INCLUDE} # -fPIC
 LDFLAGS      = -L /opt/local/lib
 SYSLIBS      = -lrrd -ldb
 
-TSDB_LIB   = libtsdb2.a
+TSDB_LIB   = libtsdb.a
 TSDB_LIB_O = tsdb_api.o tsdb_trace.o quicklz.o
 
 TARGETS     = $(TSDB_LIB) test test2 tsdbExport tsdb-create tsdb-info \
