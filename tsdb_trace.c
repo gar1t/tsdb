@@ -21,49 +21,42 @@
 
 #include "tsdb_api.h"
 
-int traceLevel = 2;
+int __trace_level = 2;
 
-void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...) {
-    va_list va_ap;
-
-    if (eventTraceLevel <= traceLevel) {
-        char buf[2048], out_buf[640];
-        char theDate[32], *extra_msg = "";
-        time_t theTime = time(NULL);
-
-        va_start (va_ap, format);
-
-        /* We have two paths - one if we're logging, one if we aren't
-         * Note that the no-log case is those systems which don't support
-         * it (WIN32), those without the headers !defined(USE_SYSLOG)
-         * those where it's parametrically off...
-         */
-
-        memset(buf, 0, sizeof(buf));
-        strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
-
-        vsnprintf(buf, sizeof(buf)-1, format, va_ap);
-
-        if (eventTraceLevel == 0) {
-            extra_msg = "ERROR: ";
-        } else if(eventTraceLevel == 1) {
-            extra_msg = "WARNING: ";
-        }
-
-        while (buf[strlen(buf)-1] == '\n') {
-            buf[strlen(buf)-1] = '\0';
-        }
-
-        snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate,
-#ifdef WIN32
-                 strrchr(file, '\\') + 1,
-#else
-                 file,
-#endif
-                 line, extra_msg, buf);
-
-        printf("%s\n", out_buf);
+void trace_event(int level, char* file, int line, char *format, ...) {
+    if (level > __trace_level) {
+        return;
     }
+
+    va_list va_ap;
+    char buf[2048], out_buf[640];
+    char theDate[32], *extra_msg = "";
+    time_t theTime = time(NULL);
+
+    va_start (va_ap, format);
+    memset(buf, 0, sizeof(buf));
+    strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
+
+    vsnprintf(buf, sizeof(buf) - 1, format, va_ap);
+
+    if (level == 1) {
+        extra_msg = "ERROR: ";
+    } else if(level == 2) {
+        extra_msg = "WARNING: ";
+    }
+
+    while (buf[strlen(buf) - 1] == '\n') {
+        buf[strlen(buf) - 1] = '\0';
+    }
+
+    snprintf(out_buf, sizeof(out_buf), "%s [%s:%d] %s%s", theDate,
+#ifdef WIN32
+             strrchr(file, '\\') + 1,
+#else
+             file,
+#endif
+             line, extra_msg, buf);
+    printf("%s\n", out_buf);
 
     fflush(stdout);
     va_end(va_ap);

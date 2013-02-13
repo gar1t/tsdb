@@ -124,7 +124,7 @@ static void check_file_exists(const char *path) {
 }
 
 static void init_trace(int verbose) {
-    traceLevel = verbose ? 99 : 0;
+    set_trace_level(verbose ? 99 : 0);
 }
 
 static void open_db(char *file, tsdb_handler *db) {

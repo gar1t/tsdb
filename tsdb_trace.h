@@ -20,8 +20,13 @@
 
 #define TRACE_ERROR     1, __FILE__, __LINE__
 #define TRACE_WARNING   2, __FILE__, __LINE__
-#define TRACE_NORMAL    3, __FILE__, __LINE__
-#define TRACE_INFO      4, __FILE__, __LINE__
+#define TRACE_INFO      3, __FILE__, __LINE__
 
-extern int traceLevel;
-extern void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...);
+#define trace_error(...)   trace_event(TRACE_ERROR,   __VA_ARGS__)
+#define trace_warning(...) trace_event(TRACE_WARNING, __VA_ARGS__)
+#define trace_info(...)    trace_event(TRACE_INFO,    __VA_ARGS__)
+
+#define set_trace_level(level) __trace_level = level
+
+extern int __trace_level;
+extern void trace_event(int level, char* file, int line, char * format, ...);

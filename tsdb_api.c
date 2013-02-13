@@ -43,8 +43,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     handler->read_only_mode = read_only_mode;
 
     if ((ret = db_create(&handler->db, NULL, 0)) != 0) {
-        traceEvent(TRACE_ERROR, "Error while creating DB handler [%s]",
-                   db_strerror(ret));
+        trace_error("Error while creating DB handler [%s]", db_strerror(ret));
         return -1;
     }
 
@@ -56,9 +55,8 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
                                  DB_BTREE,
                                  (read_only_mode ? 0 : DB_CREATE),
                                  mode)) != 0) {
-        traceEvent(TRACE_ERROR,
-                   "Error while opening DB %s [%s][r/o=%u,mode=%o]",
-                   tsdb_path, db_strerror(ret), read_only_mode, mode);
+        trace_error("Error while opening DB %s [%s][r/o=%u,mode=%o]",
+                    tsdb_path, db_strerror(ret), read_only_mode, mode);
         return -1;
     }
 
@@ -105,12 +103,9 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
 
     handler->values_len = handler->num_values_per_entry * sizeof(tsdb_value);
 
-    traceEvent(TRACE_INFO, "lowest_free_index: %u",
-               handler->lowest_free_index);
-    traceEvent(TRACE_INFO, "rrd_slot_time_duration: %u",
-               handler->rrd_slot_time_duration);
-    traceEvent(TRACE_INFO, "num_values_per_entry: %u",
-               handler->num_values_per_entry);
+    trace_info("lowest_free_index: %u", handler->lowest_free_index);
+    trace_info("rrd_slot_time_duration: %u", handler->rrd_slot_time_duration);
+    trace_info("num_values_per_entry: %u", handler->num_values_per_entry);
 
     memset(&handler->state_compress, 0, sizeof(handler->state_compress));
     memset(&handler->state_decompress, 0, sizeof(handler->state_decompress));
@@ -125,7 +120,7 @@ static void map_raw_delete(tsdb_handler *handler,
     DBT key_data;
 
     if (handler->read_only_mode) {
-        traceEvent(TRACE_WARNING, "Unable to delete value (read-only mode)");
+        trace_warning("Unable to delete value (read-only mode)");
         return;
     }
 
@@ -133,7 +128,7 @@ static void map_raw_delete(tsdb_handler *handler,
     key_data.data = key, key_data.size = key_len;
 
     if (handler->db->del(handler->db, NULL, &key_data, 0) != 0) {
-        traceEvent(TRACE_WARNING, "Error while deleting key");
+        trace_warning("Error while deleting key");
     }
 }
 
@@ -155,7 +150,7 @@ static void map_raw_set(tsdb_handler *handler,
     DBT key_data, data;
 
     if (handler->read_only_mode) {
-        traceEvent(TRACE_WARNING, "Unable to set value (read-only mode)");
+        trace_warning("Unable to set value (read-only mode)");
         return;
     }
 
@@ -165,7 +160,7 @@ static void map_raw_set(tsdb_handler *handler,
     data.data = value, data.size = value_len;
 
     if (handler->db->put(handler->db, NULL, &key_data, &data, 0) != 0) {
-        traceEvent(TRACE_WARNING, "Error while map_set(%u, %u)", key, value);
+        trace_warning("Error while map_set(%u, %u)", key, value);
     }
 }
 
@@ -197,7 +192,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     new_len = handler->chunk.chunk_mem_len + 400 /* Static value */;
     compressed = (char*)malloc(new_len);
     if (!compressed) {
-        traceEvent(TRACE_WARNING, "Not enough memory (%u bytes)", new_len);
+        trace_warning("Not enough memory (%u bytes)", new_len);
         return;
     }
 
@@ -214,8 +209,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
                                           compressed, fragment_size,
                                           &handler->state_compress);
 
-            traceEvent(TRACE_NORMAL,
-                       "Compression %u -> %u [fragment %u] [%.1f %%]",
+            trace_info("Compression %u -> %u [fragment %u] [%.1f %%]",
                        fragment_size, compressed_len, i,
                        ((float)(compressed_len*100))/((float)fragment_size));
 
@@ -223,7 +217,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
 
             map_raw_set(handler, str, strlen(str), compressed, compressed_len);
         } else {
-            traceEvent(TRACE_INFO, "Skipping fragment %u (unchanged)", i);
+            trace_info("Skipping fragment %u (unchanged)", i);
         }
     }
 
@@ -247,7 +241,7 @@ void tsdb_close(tsdb_handler *handler) {
     tsdb_flush_chunk(handler);
 
     if (!handler->read_only_mode) {
-        traceEvent(TRACE_INFO, "Flushing database changes...");
+        trace_info("Flushing database changes...");
     }
 
     handler->db->close(handler->db, 0);
@@ -345,11 +339,10 @@ void tsdb_drop_key(tsdb_handler *handler,
 
     if (drop_map_hash_index(handler, hash_name,
                             epoch_value, &hash_idx) == 0) {
-        traceEvent(TRACE_INFO, "Index %s mapped to hash %u",
-                   hash_name, hash_idx);
+        trace_info("Index %s mapped to hash %u", hash_name, hash_idx);
         unreserve_hash_index(handler, hash_idx);
     } else {
-        traceEvent(TRACE_WARNING, "Unable to drop key %s", hash_name);
+        trace_warning("Unable to drop key %s", hash_name);
     }
 }
 
@@ -364,7 +357,7 @@ static void set_map_hash_index(tsdb_handler *handler, char *idx,
     mapping.hash_idx = value;
     map_raw_set(handler, str, strlen(str), &mapping, sizeof(mapping));
 
-    traceEvent(TRACE_INFO, "[SET] Mapping %s -> %u", idx, value);
+    trace_info("[SET] Mapping %s -> %u", idx, value);
 }
 
 int tsdb_goto_epoch(tsdb_handler *handler,
@@ -393,10 +386,10 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 
     if (rc == -1) {
         if (!create_if_needed) {
-            traceEvent(TRACE_INFO, "Unable to goto epoch %u", epoch_value);
+            trace_info("Unable to goto epoch %u", epoch_value);
             return -1;
         } else {
-            traceEvent(TRACE_INFO, "Moving to goto epoch %u", epoch_value);
+            trace_info("Moving to goto epoch %u", epoch_value);
         }
 
         /* Create the entry */
@@ -408,8 +401,8 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
 
         if (handler->chunk.chunk_mem == NULL) {
-            traceEvent(TRACE_WARNING, "Not enough memory (%u bytes)",
-                       handler->chunk.chunk_mem_len);
+            trace_warning("Not enough memory (%u bytes)",
+                          handler->chunk.chunk_mem_len);
             return -2;
         }
 
@@ -428,8 +421,8 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 
             ptr = (u_int8_t*)malloc(handler->chunk.chunk_mem_len + len);
             if (ptr == NULL) {
-                traceEvent(TRACE_WARNING, "Not enough memory (%u bytes)",
-                           handler->chunk.chunk_mem_len+len);
+                trace_warning("Not enough memory (%u bytes)",
+                              handler->chunk.chunk_mem_len+len);
                 free(value);
                 return -2;
             }
@@ -442,8 +435,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             len = qlz_decompress(value, &ptr[offset],
                                  &handler->state_decompress);
 
-            traceEvent(TRACE_NORMAL,
-                       "Decompression %u -> %u [fragment %u] [%.1f %%]",
+            trace_info("Decompression %u -> %u [fragment %u] [%.1f %%]",
                        value_len, len, fragment_id,
                        ((float)(len*100))/((float)value_len));
 
@@ -458,16 +450,16 @@ int tsdb_goto_epoch(tsdb_handler *handler,
                             &value, &value_len) == -1)
                 break; /* No more fragments */
         }
-        
+
         handler->chunk.begin_epoch = epoch_value;
         handler->chunk.num_hash_indexes =
             handler->chunk.chunk_mem_len / handler->values_len;
 
-        traceEvent(TRACE_INFO, "Moved to goto epoch %u", epoch_value);
+        trace_info("Moved to goto epoch %u", epoch_value);
     }
 
     handler->chunk.growable = growable;
-    
+
     return 0;
 }
 
@@ -475,12 +467,12 @@ static int mapIndexToHash(tsdb_handler *handler, char *idx,
 			  u_int32_t *value, u_int8_t create_idx_if_needed) {
     /* Check if this is a known value */
     if (get_map_hash_index(handler, idx, value) == 0) {
-        traceEvent(TRACE_INFO, "Index %s mapped to hash %u", idx, *value);
+        trace_info("Index %s mapped to hash %u", idx, *value);
         return 0;
     }
 
     if (!create_idx_if_needed) {
-        traceEvent(TRACE_INFO, "Unable to find index %s", idx);
+        trace_info("Unable to find index %s", idx);
         return -1;
     }
 
@@ -503,10 +495,10 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
 
     if (mapIndexToHash(handler, hash_name, &hash_index,
                        create_idx_if_needed) == -1) {
-        traceEvent(TRACE_INFO, "Unable to find index %s", hash_name);
+        trace_info("Unable to find index %s", hash_name);
         return -1;
     } else {
-        traceEvent(TRACE_INFO, "%s mapped to idx %u", hash_name, hash_index);
+        trace_info("%s mapped to idx %u", hash_name, hash_index);
     }
 
     if (handler->chunk.load_page_on_demand || handler->read_only_mode) {
@@ -527,8 +519,8 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
         handler->chunk.chunk_mem =
             (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
         if (handler->chunk.chunk_mem == NULL) {
-            traceEvent(TRACE_WARNING, "Not enough memory (%u bytes)",
-                       handler->chunk.chunk_mem_len);
+            trace_warning("Not enough memory (%u bytes)",
+                          handler->chunk.chunk_mem_len);
             return -2;
         }
 
@@ -548,10 +540,10 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
 
     if (hash_index >= handler->chunk.num_hash_indexes) {
         if (!handler->chunk.growable) {
-            traceEvent(TRACE_ERROR, "Index %u out of range %u...%u",
-                       hash_index,
-                       0,
-                       handler->chunk.num_hash_indexes);
+            trace_error("Index %u out of range %u...%u",
+                        hash_index,
+                        0,
+                        handler->chunk.num_hash_indexes);
             return -1;
         } else {
             u_int32_t to_add  = CHUNK_GROWTH * handler->values_len;
@@ -564,30 +556,30 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
                 memset(&ptr[handler->chunk.chunk_mem_len],
                        handler->default_unknown_value, to_add);
                 handler->chunk.num_hash_indexes += CHUNK_GROWTH;
-                handler->chunk.chunk_mem = ptr, 
+                handler->chunk.chunk_mem = ptr,
                     handler->chunk.chunk_mem_len = new_len;
 
-                traceEvent(TRACE_INFO, "Grown table to %u elements",
+                trace_info("Grown table to %u elements",
                            handler->chunk.num_hash_indexes);
 
                 goto redo_getOffset;
             } else {
-                traceEvent(TRACE_WARNING,
-                           "Not enough memory (%u bytes): unable to grow table",
-                           new_len);
+                trace_warning("Not enough memory (%u bytes): unable to grow "
+                              "table", new_len);
                 return -2;
             }
         }
     }
 
-    /* All hashes of one day are one attached to the other: fast insert, 
+    /* All hashes of one day are one attached to the other: fast insert,
        slow data extraction */
     *offset = handler->values_len * hash_index;
 
-    if (*offset >= handler->chunk.chunk_mem_len)
-        traceEvent(TRACE_ERROR, "INTERNAL ERROR [Id: %s/%u][Offset: %u/%u]",
-                   hash_name, hash_index, *offset,
-                   handler->chunk.chunk_mem_len);
+    if (*offset >= handler->chunk.chunk_mem_len) {
+        trace_error("INTERNAL ERROR [Id: %s/%u][Offset: %u/%u]",
+                    hash_name, hash_index, *offset,
+                    handler->chunk.chunk_mem_len);
+    }
 
     return 0;
 }
@@ -605,7 +597,7 @@ int tsdb_set(tsdb_handler *handler,
 
     if ((!handler->chunk.load_page_on_demand)
         && (handler->chunk.chunk_mem == NULL)) {
-        traceEvent(TRACE_ERROR, "Missing epoch");
+        trace_error("Missing epoch");
         return -2;
     }
 
@@ -618,13 +610,13 @@ int tsdb_set(tsdb_handler *handler,
         /* Mark a fragment as changed */
 
         if (fragment_id > MAX_NUM_FRAGMENTS) {
-            traceEvent(TRACE_ERROR, "Internal error [%u > %u]",
-                       fragment_id, MAX_NUM_FRAGMENTS);
+            trace_error("Internal error [%u > %u]",
+                        fragment_id, MAX_NUM_FRAGMENTS);
         } else {
             handler->chunk.fragment_changed[fragment_id] = 1;
         }
     }
-    
+
     return rc;
 }
 
@@ -642,7 +634,7 @@ int tsdb_get(tsdb_handler *handler,
 
     if ((!handler->chunk.load_page_on_demand)
         && (handler->chunk.chunk_mem == NULL)) {
-        traceEvent(TRACE_ERROR, "Missing epoch");
+        trace_error("Missing epoch");
         return -2;
     }
 

@@ -46,7 +46,7 @@ static void check_read_val(uint val, uint expected, char *key) {
 int main(int argc, char *argv[]) {
 
     char *file = get_file_arg(argc, argv);
-    traceLevel = 0;
+    set_trace_level(0);
 
     tsdb_handler db;
     int ret;

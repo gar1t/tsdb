@@ -115,7 +115,7 @@ static void set_tsdb_values(set_args *args) {
 }
 
 static void init_trace(int verbose) {
-    traceLevel = verbose ? 99 : 0;
+    set_trace_level(verbose ? 99 : 0);
 }
 
 int main(int argc, char *argv[]) {

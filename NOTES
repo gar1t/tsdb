@@ -216,7 +216,8 @@ Source code could use some reformatting:
 - Improved white spacing
 - Misc cleanup
 
-** TODO traceEvent to trace_info, etc
+** DONE traceEvent to trace_info, etc
+** TODO Clean up variable names
 ** TODO Exit on impossible conditions
 
 malloc, e.g. should cause an immediate exit.

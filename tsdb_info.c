@@ -64,14 +64,10 @@ static void print_db_info(char *file) {
     tsdb_close(&db);
 }
 
-static void init_trace() {
-    traceLevel = 0;
-}
-
 int main(int argc, char *argv[]) {
     info_args args;
 
-    init_trace();
+    set_trace_level(0);
     process_args(argc, argv, &args);
     check_file_exists(args.file);
     print_db_info(args.file);
