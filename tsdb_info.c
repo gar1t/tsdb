@@ -38,7 +38,7 @@ static void check_file_exists(const char *path) {
   }
 }
 
-static void print_db_info(const char *file) {
+static void print_db_info(char *file) {
   tsdb_handler db;
   int rc;
   u_int16_t unused16 = 0;
