@@ -227,20 +227,8 @@ static int get_key_index(tsdb_handler *handler, char *key, u_int32_t *index) {
     snprintf(str, sizeof(str), "key-%s", key);
 
     if (db_get(handler, str, strlen(str), &ptr, &len) == 0) {
-        tsdb_hash_mapping *mappings = (tsdb_hash_mapping*)ptr;
-        u_int i, found = 0, num_mappings = len / sizeof(tsdb_hash_mapping);
-
-        for (i=0; i<num_mappings; i++) {
-            if ((mappings[i].epoch_start <= handler->chunk.load_epoch)
-                && ((mappings[i].epoch_end == 0)
-                    || (mappings[i].epoch_end > handler->chunk.load_epoch))) {
-                *index = mappings[i].index;
-                found = 1;
-                break;
-            }
-        }
-
-        return found ? 0 : -1;
+        *index = *(u_int32_t*)ptr;
+        return 0;
     }
 
     return -1;
@@ -248,13 +236,10 @@ static int get_key_index(tsdb_handler *handler, char *key, u_int32_t *index) {
 
 static void set_key_index(tsdb_handler *handler, char *key, u_int32_t index) {
     char str[32];
-    tsdb_hash_mapping mapping;
 
     snprintf(str, sizeof(str), "key-%s", key);
-    mapping.epoch_start = handler->chunk.load_epoch;
-    mapping.epoch_end = 0;
-    mapping.index = index;
-    db_put(handler, str, strlen(str), &mapping, sizeof(mapping));
+
+    db_put(handler, str, strlen(str), &index, sizeof(index));
 
     trace_info("[SET] Mapping %s -> %u", key, index);
 }
