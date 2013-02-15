@@ -73,8 +73,7 @@ extern int  tsdb_open(char *tsdb_path, tsdb_handler *handler,
 
 extern void tsdb_close(tsdb_handler *handler);
 
-extern u_int32_t normalize_epoch(tsdb_handler *handler,
-				 u_int32_t *epoch);
+extern void normalize_epoch(tsdb_handler *handler, u_int32_t *epoch);
 
 extern int tsdb_goto_epoch(tsdb_handler *handler,
 			    u_int32_t epoch_value,

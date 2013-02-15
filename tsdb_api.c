@@ -212,11 +212,9 @@ void tsdb_close(tsdb_handler *handler) {
     handler->alive = 0;
 }
 
-u_int32_t normalize_epoch(tsdb_handler *handler, u_int32_t *epoch) {
-    *epoch -= *epoch % handler->rrd_slot_time_duration;
+void normalize_epoch(tsdb_handler *handler, u_int32_t *epoch) {
+    *epoch -= *epoch % handler->slot_duration;
     *epoch += timezone - daylight * 3600;
-
-    return *epoch;
 }
 
 static int get_key_index(tsdb_handler *handler, char *key, u_int32_t *index) {
