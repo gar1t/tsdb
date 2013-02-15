@@ -39,9 +39,9 @@ static void check_read_val(uint val, uint expected, char *key) {
     }
 }
 
-#define num_epochs 10000
+#define num_epochs 100
 #define slot_seconds 60
-#define num_keys 100
+#define num_keys 1000
 
 int main(int argc, char *argv[]) {
 
@@ -53,6 +53,7 @@ int main(int argc, char *argv[]) {
     int cur, start, stop;
     char key[255];
     uint i;
+    uint write_val;
     uint *read_val;
 
     // open/create db
@@ -64,7 +65,7 @@ int main(int argc, char *argv[]) {
     // move through epochs for writes
 
     start = 1000000000;
-    stop = start + num_epochs * slot_seconds;
+    stop = start + (num_epochs - 1) * slot_seconds;
 
     for (cur = start; cur <= stop; cur += slot_seconds) {
 
@@ -75,7 +76,8 @@ int main(int argc, char *argv[]) {
 
         for (i = 1; i <= num_keys; i++) {
             sprintf(key, "key-%i", i);
-            ret = tsdb_set(&db, key, &i);
+            write_val = i * 1000;
+            ret = tsdb_set(&db, key, &write_val);
             check(ret, "tsdb_set");
         }
     }
@@ -93,7 +95,8 @@ int main(int argc, char *argv[]) {
             sprintf(key, "key-%i", i);
             ret = tsdb_get(&db, key, &read_val);
             check(ret, "tsdb_get");
-            check_read_val(*read_val, i, key);
+            write_val = i * 1000;
+            check_read_val(*read_val, write_val, key);
         }
     }
 
