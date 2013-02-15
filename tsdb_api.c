@@ -32,8 +32,11 @@ static void db_put(tsdb_handler *handler,
 
     memset(&key_data, 0, sizeof(key_data));
     memset(&data, 0, sizeof(data));
-    key_data.data = key, key_data.size = key_len;
-    data.data = value, data.size = value_len;
+
+    key_data.data = key;
+    key_data.size = key_len;
+    data.data = value;
+    data.size = value_len;
 
     if (handler->db->put(handler->db, NULL, &key_data, &data, 0) != 0) {
         trace_warning("Error while map_set(%u, %u)", key, value);
@@ -48,7 +51,9 @@ static int db_get(tsdb_handler *handler,
     memset(&key_data, 0, sizeof(key_data));
     memset(&data, 0, sizeof(data));
 
-    key_data.data = key, key_data.size = key_len;
+    key_data.data = key;
+    key_data.size = key_len;
+
     if (handler->db->get(handler->db, NULL, &key_data, &data, 0) == 0) {
         *value = data.data, *value_len = data.size;
         return 0;
@@ -66,6 +71,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     int ret, mode;
 
     memset(handler, 0, sizeof(tsdb_handler));
+
     handler->read_only_mode = read_only_mode;
 
     if ((ret = db_create(&handler->db, NULL, 0)) != 0) {
@@ -74,6 +80,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     }
 
     mode = (read_only_mode ? 00444 : 00664 );
+
     if ((ret = handler->db->open(handler->db,
                                  NULL,
                                  (const char*)tsdb_path,
@@ -86,8 +93,8 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
         return -1;
     }
 
-    if (db_get(handler,
-               "lowest_free_index", strlen("lowest_free_index"),
+    if (db_get(handler, "lowest_free_index",
+               strlen("lowest_free_index"),
                &value, &value_len) == 0) {
         handler->lowest_free_index = *((u_int32_t*)value);
     } else {
@@ -115,7 +122,8 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     }
 
     if (db_get(handler, "num_values_per_entry",
-               strlen("num_values_per_entry"), &value, &value_len) == 0) {
+               strlen("num_values_per_entry"),
+               &value, &value_len) == 0) {
         *num_values_per_entry = handler->num_values_per_entry =
             *((u_int16_t*)value);
     } else {
@@ -286,9 +294,9 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         }
 
         // Create the entry
-        handler->chunk.begin_epoch =
-            epoch_value, handler->chunk.num_hash_indexes = CHUNK_GROWTH;
-        handler->chunk.chunk_mem_len =
+        handler->chunk.begin_epoch = epoch_value;
+        handler->chunk.num_hash_indexes = CHUNK_GROWTH;
+        handler->chunk.chunk_mem_len = 
             handler->values_len*handler->chunk.num_hash_indexes;
         handler->chunk.chunk_mem =
             (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
@@ -299,7 +307,8 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             return -2;
         }
 
-        memset(handler->chunk.chunk_mem, handler->default_unknown_value,
+        memset(handler->chunk.chunk_mem,
+               handler->default_unknown_value,
                handler->chunk.chunk_mem_len);
     } else {
         // We need to decompress data and glue up all fragments
@@ -339,9 +348,9 @@ int tsdb_goto_epoch(tsdb_handler *handler,
             handler->chunk.chunk_mem = ptr;
 
             snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
-            if (db_get(handler, str, strlen(str),
-                            &value, &value_len) == -1)
+            if (db_get(handler, str, strlen(str), &value, &value_len) == -1) {
                 break; // No more fragments
+            }
         }
 
         handler->chunk.begin_epoch = epoch_value;
@@ -371,6 +380,7 @@ static int mapIndexToHash(tsdb_handler *handler, char *idx,
 
     *value = handler->lowest_free_index++;
     set_map_hash_index(handler, idx, *value);
+
     db_put(handler,
            "lowest_free_index", strlen("lowest_free_index"),
            &handler->lowest_free_index,
@@ -446,8 +456,8 @@ static int getOffset(tsdb_handler *handler, char *hash_name,
                 memset(&ptr[handler->chunk.chunk_mem_len],
                        handler->default_unknown_value, to_add);
                 handler->chunk.num_hash_indexes += CHUNK_GROWTH;
-                handler->chunk.chunk_mem = ptr,
-                    handler->chunk.chunk_mem_len = new_len;
+                handler->chunk.chunk_mem = ptr;
+                handler->chunk.chunk_mem_len = new_len;
 
                 trace_info("Grown table to %u elements",
                            handler->chunk.num_hash_indexes);
