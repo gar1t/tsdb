@@ -20,7 +20,7 @@
 
 #include "tsdb_api.h"
 
-static void db_set(tsdb_handler *handler,
+static void db_put(tsdb_handler *handler,
                    void *key, u_int32_t key_len,
                    void *value, u_int32_t value_len) {
     DBT key_data, data;
@@ -93,7 +93,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     } else {
         if (!handler->read_only_mode) {
             handler->lowest_free_index = 0;
-            db_set(handler, "lowest_free_index",
+            db_put(handler, "lowest_free_index",
                    strlen("lowest_free_index"),
                    &handler->lowest_free_index,
                    sizeof(handler->lowest_free_index));
@@ -107,7 +107,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     } else {
         if (!handler->read_only_mode) {
             handler->rrd_slot_time_duration = rrd_slot_time_duration;
-            db_set(handler, "rrd_slot_time_duration",
+            db_put(handler, "rrd_slot_time_duration",
                    strlen("rrd_slot_time_duration"),
                    &handler->rrd_slot_time_duration,
                    sizeof(handler->rrd_slot_time_duration));
@@ -121,7 +121,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     } else {
         if (!handler->read_only_mode) {
             handler->num_values_per_entry = *num_values_per_entry;
-            db_set(handler, "num_values_per_entry",
+            db_put(handler, "num_values_per_entry",
                    strlen("num_values_per_entry"),
                    &handler->num_values_per_entry,
                    sizeof(handler->num_values_per_entry));
@@ -176,7 +176,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
 
             snprintf(str, sizeof(str), "%u-%u", handler->chunk.begin_epoch, i);
 
-            db_set(handler, str, strlen(str), compressed, compressed_len);
+            db_put(handler, str, strlen(str), compressed, compressed_len);
         } else {
             trace_info("Skipping fragment %u (unchanged)", i);
         }
@@ -248,7 +248,7 @@ static void set_map_hash_index(tsdb_handler *handler, char *idx,
     mapping.epoch_start = handler->chunk.load_epoch;
     mapping.epoch_end = 0;
     mapping.hash_idx = value;
-    db_set(handler, str, strlen(str), &mapping, sizeof(mapping));
+    db_put(handler, str, strlen(str), &mapping, sizeof(mapping));
 
     trace_info("[SET] Mapping %s -> %u", idx, value);
 }
@@ -371,7 +371,7 @@ static int mapIndexToHash(tsdb_handler *handler, char *idx,
 
     *value = handler->lowest_free_index++;
     set_map_hash_index(handler, idx, *value);
-    db_set(handler,
+    db_put(handler,
            "lowest_free_index", strlen("lowest_free_index"),
            &handler->lowest_free_index,
            sizeof(handler->lowest_free_index));
