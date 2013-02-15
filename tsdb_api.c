@@ -366,15 +366,15 @@ static int ensure_key_index(tsdb_handler *handler, char *key,
 }
 
 static int get_key_offset(tsdb_handler *handler, char *key,
-		     u_int64_t *offset, u_int8_t create_if_needed) {
+                          u_int64_t *offset, u_int8_t create_if_needed) {
     u_int32_t index;
 
     if (ensure_key_index(handler, key, &index, create_if_needed) == -1) {
         trace_info("Unable to find index %s", key);
         return -1;
-    } else {
-        trace_info("%s mapped to idx %u", key, index);
     }
+
+    trace_info("%s mapped to idx %u", key, index);
 
     if (handler->chunk.load_page_on_demand || handler->read_only) {
         u_int32_t fragment_id = index / CHUNK_GROWTH, value_len;
@@ -411,37 +411,35 @@ static int get_key_offset(tsdb_handler *handler, char *key,
         index -= handler->chunk.base_index;
     }
 
- redo_getOffset:
+ get_offset:
 
     if (index >= handler->chunk.num_indexes) {
         if (!handler->chunk.growable) {
             trace_error("Index %u out of range %u...%u",
                         index, 0, handler->chunk.num_indexes);
             return -1;
-        } else {
-            u_int32_t to_add  = CHUNK_GROWTH * handler->values_len;
-            u_int32_t new_len = handler->chunk.chunk_mem_len + to_add;
-            u_int8_t *ptr    = malloc(new_len);
-
-            if (ptr != NULL) {
-                memcpy(ptr, handler->chunk.chunk_mem,
-                       handler->chunk.chunk_mem_len);
-                memset(&ptr[handler->chunk.chunk_mem_len],
-                       handler->unknown_value, to_add);
-                handler->chunk.num_indexes += CHUNK_GROWTH;
-                handler->chunk.chunk_mem = ptr;
-                handler->chunk.chunk_mem_len = new_len;
-
-                trace_info("Grown table to %u elements",
-                           handler->chunk.num_indexes);
-
-                goto redo_getOffset;
-            } else {
-                trace_warning("Not enough memory (%u bytes): unable to grow "
-                              "table", new_len);
-                return -2;
-            }
         }
+
+        u_int32_t to_add = CHUNK_GROWTH * handler->values_len;
+        u_int32_t new_len = handler->chunk.chunk_mem_len + to_add;
+        u_int8_t *ptr = malloc(new_len);
+
+        if (!ptr) {
+            trace_warning("Not enough memory (%u bytes): unable to grow "
+                          "table", new_len);
+            return -2;
+        }
+
+        memcpy(ptr, handler->chunk.chunk_mem, handler->chunk.chunk_mem_len);
+        memset(&ptr[handler->chunk.chunk_mem_len],
+               handler->unknown_value, to_add);
+        handler->chunk.num_indexes += CHUNK_GROWTH;
+        handler->chunk.chunk_mem = ptr;
+        handler->chunk.chunk_mem_len = new_len;
+
+        trace_info("Epoch grown to %u", handler->chunk.num_indexes);
+
+        goto get_offset;
     }
 
     // All hashes of one day are one attached to the other: fast insert,
