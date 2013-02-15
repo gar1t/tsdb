@@ -25,7 +25,7 @@ static void db_put(tsdb_handler *handler,
                    void *value, u_int32_t value_len) {
     DBT key_data, data;
 
-    if (handler->read_only_mode) {
+    if (handler->read_only) {
         trace_warning("Unable to set value (read-only mode)");
         return;
     }
@@ -63,33 +63,33 @@ static int db_get(tsdb_handler *handler,
 }
 
 int tsdb_open(char *tsdb_path, tsdb_handler *handler,
-	      u_int16_t *num_values_per_entry,
-	      u_int32_t rrd_slot_time_duration,
-	      u_int8_t read_only_mode) {
+	      u_int16_t *values_per_entry,
+	      u_int32_t slot_duration,
+	      u_int8_t read_only) {
     void *value;
     u_int32_t value_len;
     int ret, mode;
 
     memset(handler, 0, sizeof(tsdb_handler));
 
-    handler->read_only_mode = read_only_mode;
+    handler->read_only = read_only;
 
     if ((ret = db_create(&handler->db, NULL, 0)) != 0) {
         trace_error("Error while creating DB handler [%s]", db_strerror(ret));
         return -1;
     }
 
-    mode = (read_only_mode ? 00444 : 00664 );
+    mode = (read_only ? 00444 : 00664 );
 
     if ((ret = handler->db->open(handler->db,
                                  NULL,
                                  (const char*)tsdb_path,
                                  NULL,
                                  DB_BTREE,
-                                 (read_only_mode ? 0 : DB_CREATE),
+                                 (read_only ? 0 : DB_CREATE),
                                  mode)) != 0) {
         trace_error("Error while opening DB %s [%s][r/o=%u,mode=%o]",
-                    tsdb_path, db_strerror(ret), read_only_mode, mode);
+                    tsdb_path, db_strerror(ret), read_only, mode);
         return -1;
     }
 
@@ -98,7 +98,7 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
                &value, &value_len) == 0) {
         handler->lowest_free_index = *((u_int32_t*)value);
     } else {
-        if (!handler->read_only_mode) {
+        if (!handler->read_only) {
             handler->lowest_free_index = 0;
             db_put(handler, "lowest_free_index",
                    strlen("lowest_free_index"),
@@ -110,42 +110,42 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
     if (db_get(handler, "rrd_slot_time_duration",
                strlen("rrd_slot_time_duration"),
                &value, &value_len) == 0) {
-        handler->rrd_slot_time_duration = *((u_int32_t*)value);
+        handler->slot_duration = *((u_int32_t*)value);
     } else {
-        if (!handler->read_only_mode) {
-            handler->rrd_slot_time_duration = rrd_slot_time_duration;
-            db_put(handler, "rrd_slot_time_duration",
-                   strlen("rrd_slot_time_duration"),
-                   &handler->rrd_slot_time_duration,
-                   sizeof(handler->rrd_slot_time_duration));
+        if (!handler->read_only) {
+            handler->slot_duration = slot_duration;
+            db_put(handler, "slot_duration",
+                   strlen("slot_duration"),
+                   &handler->slot_duration,
+                   sizeof(handler->slot_duration));
         }
     }
 
-    if (db_get(handler, "num_values_per_entry",
-               strlen("num_values_per_entry"),
+    if (db_get(handler, "values_per_entry",
+               strlen("values_per_entry"),
                &value, &value_len) == 0) {
-        *num_values_per_entry = handler->num_values_per_entry =
+        *values_per_entry = handler->values_per_entry =
             *((u_int16_t*)value);
     } else {
-        if (!handler->read_only_mode) {
-            handler->num_values_per_entry = *num_values_per_entry;
-            db_put(handler, "num_values_per_entry",
-                   strlen("num_values_per_entry"),
-                   &handler->num_values_per_entry,
-                   sizeof(handler->num_values_per_entry));
+        if (!handler->read_only) {
+            handler->values_per_entry = *values_per_entry;
+            db_put(handler, "values_per_entry",
+                   strlen("values_per_entry"),
+                   &handler->values_per_entry,
+                   sizeof(handler->values_per_entry));
         }
     }
 
-    handler->values_len = handler->num_values_per_entry * sizeof(tsdb_value);
+    handler->values_len = handler->values_per_entry * sizeof(tsdb_value);
 
     trace_info("lowest_free_index: %u", handler->lowest_free_index);
-    trace_info("rrd_slot_time_duration: %u", handler->rrd_slot_time_duration);
-    trace_info("num_values_per_entry: %u", handler->num_values_per_entry);
+    trace_info("slot_duration: %u", handler->slot_duration);
+    trace_info("values_per_entry: %u", handler->values_per_entry);
 
     memset(&handler->state_compress, 0, sizeof(handler->state_compress));
     memset(&handler->state_decompress, 0, sizeof(handler->state_decompress));
 
-    handler->alive_and_kicking = 1;
+    handler->alive = 1;
 
     return 0;
 }
@@ -171,7 +171,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     for (i=0; i<num_fragments; i++) {
         u_int offset;
 
-        if ((!handler->read_only_mode) && handler->chunk.fragment_changed[i]) {
+        if ((!handler->read_only) && handler->chunk.fragment_changed[i]) {
             offset = i * fragment_size;
 
             compressed_len = qlz_compress(&handler->chunk.chunk_mem[offset],
@@ -197,19 +197,19 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
 
 void tsdb_close(tsdb_handler *handler) {
 
-    if (!handler->alive_and_kicking) {
+    if (!handler->alive) {
         return;
     }
 
     tsdb_flush_chunk(handler);
 
-    if (!handler->read_only_mode) {
+    if (!handler->read_only) {
         trace_info("Flushing database changes...");
     }
 
     handler->db->close(handler->db, 0);
 
-    handler->alive_and_kicking = 0;
+    handler->alive = 0;
 }
 
 u_int32_t normalize_epoch(tsdb_handler *handler, u_int32_t *epoch) {
@@ -291,7 +291,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         }
 
         memset(handler->chunk.chunk_mem,
-               handler->default_unknown_value,
+               handler->unknown_value,
                handler->chunk.chunk_mem_len);
     } else {
         // We need to decompress data and glue up all fragments
@@ -383,7 +383,7 @@ static int get_key_offset(tsdb_handler *handler, char *key,
         trace_info("%s mapped to idx %u", key, index);
     }
 
-    if (handler->chunk.load_page_on_demand || handler->read_only_mode) {
+    if (handler->chunk.load_page_on_demand || handler->read_only) {
         u_int32_t fragment_id = index / CHUNK_GROWTH, value_len;
         char str[32];
         void *value;
@@ -434,7 +434,7 @@ static int get_key_offset(tsdb_handler *handler, char *key,
                 memcpy(ptr, handler->chunk.chunk_mem,
                        handler->chunk.chunk_mem_len);
                 memset(&ptr[handler->chunk.chunk_mem_len],
-                       handler->default_unknown_value, to_add);
+                       handler->unknown_value, to_add);
                 handler->chunk.num_indexes += CHUNK_GROWTH;
                 handler->chunk.chunk_mem = ptr;
                 handler->chunk.chunk_mem_len = new_len;
@@ -471,7 +471,7 @@ int tsdb_set(tsdb_handler *handler,
     u_int64_t offset;
     int rc;
 
-    if (!handler->alive_and_kicking) {
+    if (!handler->alive) {
         return -1;
     }
 
@@ -505,9 +505,9 @@ int tsdb_get(tsdb_handler *handler,
     u_int64_t offset;
     int rc;
 
-    *value_to_read = &handler->default_unknown_value;
+    *value_to_read = &handler->unknown_value;
 
-    if (!handler->alive_and_kicking) {
+    if (!handler->alive) {
         return -1;
     }
 

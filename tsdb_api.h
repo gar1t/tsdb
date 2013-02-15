@@ -37,7 +37,7 @@ typedef struct {
   u_int32_t chunk_mem_len;
   u_int32_t begin_epoch;
   u_int8_t growable;
-  u_int32_t num_hash_indexes;
+  u_int32_t num_indexes;
   u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
   u_int32_t base_index;
   u_int8_t load_page_on_demand;
@@ -47,13 +47,13 @@ typedef struct {
 typedef u_int32_t tsdb_value;
 
 typedef struct {
-  u_int8_t alive_and_kicking;
-  u_int8_t read_only_mode;
-  u_int16_t num_values_per_entry;
+  u_int8_t alive;
+  u_int8_t read_only;
+  u_int16_t values_per_entry;
   u_int16_t values_len;
-  u_int32_t default_unknown_value;
+  u_int32_t unknown_value;
   u_int32_t lowest_free_index;
-  u_int32_t rrd_slot_time_duration;
+  u_int32_t slot_duration;
   qlz_state_compress state_compress;
   qlz_state_decompress state_decompress;
   tsdb_chunk chunk;
@@ -67,9 +67,9 @@ typedef struct {
 } tsdb_hash_mapping;
 
 extern int  tsdb_open(char *tsdb_path, tsdb_handler *handler,
-		      u_int16_t *num_values_per_entry,
-		      u_int32_t rrd_slot_time_duration,
-		      u_int8_t read_only_mode);
+		      u_int16_t *values_per_entry,
+		      u_int32_t slot_duration,
+		      u_int8_t read_only);
 
 extern void tsdb_close(tsdb_handler *handler);
 
@@ -82,10 +82,6 @@ extern int tsdb_goto_epoch(tsdb_handler *handler,
 			    u_int8_t growable,
 			    u_int8_t load_page_on_demand);
 
-extern int tsdb_set(tsdb_handler *handler,
-		    char *hash_index,
-		    tsdb_value *value_to_store);
+extern int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value);
 
-extern int tsdb_get(tsdb_handler *handler,
-		    char *hash_index,
-		    tsdb_value **value_to_read);
+extern int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value);
