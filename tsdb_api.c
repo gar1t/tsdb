@@ -270,21 +270,17 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         if (!create_if_needed) {
             trace_info("Unable to goto epoch %u", epoch_value);
             return -1;
-        } else {
-            trace_info("Moving to goto epoch %u", epoch_value);
         }
 
-        // Create the entry
+        trace_info("Creating epoch %u", epoch_value);
+
         handler->chunk.begin_epoch = epoch_value;
         handler->chunk.num_indexes = CHUNK_GROWTH;
-        handler->chunk.chunk_mem_len = 
-            handler->values_len*handler->chunk.num_indexes;
-        handler->chunk.chunk_mem =
-            (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
-
+        u_int32_t mem_len = handler->values_len * handler->chunk.num_indexes;
+        handler->chunk.chunk_mem_len = mem_len;
+        handler->chunk.chunk_mem = (u_int8_t*)malloc(mem_len);
         if (handler->chunk.chunk_mem == NULL) {
-            trace_warning("Not enough memory (%u bytes)",
-                          handler->chunk.chunk_mem_len);
+            trace_warning("Not enough memory (%u bytes)", mem_len);
             return -2;
         }
 
@@ -292,9 +288,10 @@ int tsdb_goto_epoch(tsdb_handler *handler,
                handler->unknown_value,
                handler->chunk.chunk_mem_len);
     } else {
-        // We need to decompress data and glue up all fragments
         u_int32_t len, offset = 0;
         u_int8_t *ptr;
+
+        trace_info("Loading epoch %u", epoch_value);
 
         fragment_id = 0;
         handler->chunk.chunk_mem_len = 0;
@@ -335,10 +332,8 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         }
 
         handler->chunk.begin_epoch = epoch_value;
-        handler->chunk.num_indexes =
-            handler->chunk.chunk_mem_len / handler->values_len;
-
-        trace_info("Moved to goto epoch %u", epoch_value);
+        handler->chunk.num_indexes = (handler->chunk.chunk_mem_len
+                                      / handler->values_len);
     }
 
     handler->chunk.growable = growable;
