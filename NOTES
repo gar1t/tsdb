@@ -447,6 +447,19 @@ OR: maybe what "goto epoch" wants is a "read_mode" flag, which means:
 - if true don't create on demand
 - if false, load what's there
 
+** TODO get_key_offset -> two functions
+
+I think we want to refacgtor get_key_offset into two functions:
+
+- prepare_offset_for_read
+- prepare_offset_for_write
+
+This is much easier to understand and corresponds with the way it's used in
+tsdb_get and tsdb_set.
+
+The term "prepare" (rather than "get") clearly denotes that there's a setup
+cost to the function.
+
 ** TODO Consider: Get rid of "read only" mode
 
 Not sure if there's any point to this -- unless it's to support "reader"
