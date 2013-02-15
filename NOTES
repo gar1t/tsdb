@@ -206,55 +206,6 @@ Or
 Same performance characteristics (storage, retrieval, space) of current tsdb,
 but with tag based queries.
 
-* Next Steps
-
-** DONE Clean up source
-
-Source code could use some reformatting:
-
-- 79 max line length
-- Improved white spacing
-- Misc cleanup
-
-** DONE traceEvent to trace_info, etc
-** TODO Clean up variable names
-** TODO Exit on impossible conditions
-
-malloc, e.g. should cause an immediate exit.
-
-** TODO Refactor map-XXX
-
-- Rename to key-XXX
-- Store only the index
-- Get rid of anything that uses, or purprotedly uses, the map ranges, multiple
-  entries, etc.
-
-** TODO Refactor rsv-XXX
-
-This is pointless. We can use the next counter authoritatively.
-
-** TODO Refactor map_raw_key_exists
-
-It's arguably a nit but why doesn't this use DB->exists?
-
-Would look something like this:
-
-#+begin_src c
-  static int map_raw_key_exists(tsdb_handler *handler,
-                                void *key, u_int32_t key_len) {
-    DBT key_data;
-    key_data.data = key;
-    key_data.size = key_len;
-
-    if (handler->db->exists(handler->db, NULL, &key_data, 0) == DB_NOTFOUND) {
-      return 0;
-    } else {
-      return 1;
-    }
-  }
-#+end_src
-
-
 * Longer Term
 
 ** Lookup by index
@@ -431,3 +382,76 @@ caching that occurs in the database. It may be pointless to cache tag arrays if
 they're already being cached by the database. As long as we're not compressing
 the array, it *might* be the case that we have direct access to the database's
 value in memory.
+
+* Next Steps
+
+** DONE Clean up source
+
+Source code could use some reformatting:
+
+- 79 max line length
+- Improved white spacing
+- Misc cleanup
+
+** DONE traceEvent to trace_info, etc
+** DONE Misc refactor
+
+*** DONE db_set -> db_put
+*** DONE lowerCamelCase to standard
+*** DONE consistent names
+
+- hash/hash_index -> index
+- name/hash_name -> key
+
+*** DONE Shorter names
+
+- num_xxx -> xxx
+- xxx_mode -> xxx
+- alive_and_kicking -> open
+
+** DONE Refactor map-XXX
+
+*** DONE Rename to key-XXX
+*** DONE Store only the index
+*** DONE Drop index map
+
+** DONE Refactor rsv-XXX
+
+This is pointless. We can use the next counter authoritatively.
+
+** DONE Refactor normalize_epoch
+
+Should be a void.
+
+** TODO Consider: Get rid of "on demand" option
+
+Unless there's a point to having the "load page on demand" feature an option,
+we should pick one behavior and make it the standard (i.e. no option).
+
+The default should be "on demand" -- unless:
+
+- There's a reason to proactively load the page (e.g. check size)
+- On demand doesn't work for some reason
+- There's absolutely no reason to call goto and *not* try to read or write
+
+Though it does look like chunks are created on "goto epoch" regardless of if
+they're written to (how could the call know, but for the on_demand flag)?
+
+So it might be that the flag is there to avoid creating the epoch data for
+reads.
+
+Now we're back to asking, what's the point of actively creating the data?
+
+OR: maybe what "goto epoch" wants is a "read_mode" flag, which means:
+
+- if true don't create on demand
+- if false, load what's there
+
+** TODO Consider: Get rid of "read only" mode
+
+Not sure if there's any point to this -- unless it's to support "reader"
+access.
+
+** TODO Exit on impossible conditions
+
+malloc, e.g. should cause an immediate exit.
