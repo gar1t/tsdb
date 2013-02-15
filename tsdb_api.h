@@ -60,12 +60,6 @@ typedef struct {
   DB *db;
 } tsdb_handler;
 
-typedef struct {
-  u_int32_t epoch_start;
-  u_int32_t epoch_end;
-  u_int32_t hash_idx;
-} tsdb_hash_mapping;
-
 extern int  tsdb_open(char *tsdb_path, tsdb_handler *handler,
 		      u_int16_t *values_per_entry,
 		      u_int32_t slot_duration,
