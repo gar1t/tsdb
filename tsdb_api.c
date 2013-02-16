@@ -107,8 +107,8 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
         }
     }
 
-    if (db_get(handler, "rrd_slot_time_duration",
-               strlen("rrd_slot_time_duration"),
+    if (db_get(handler, "slot_duration",
+               strlen("slot_duration"),
                &value, &value_len) == 0) {
         handler->slot_duration = *((u_int32_t*)value);
     } else {
