@@ -39,7 +39,7 @@ static void db_put(tsdb_handler *handler,
     data.size = value_len;
 
     if (handler->db->put(handler->db, NULL, &key_data, &data, 0) != 0) {
-        trace_warning("Error while map_set(%u, %u)", key, value);
+        trace_error("Error while map_set(%u, %u)", key, value);
     }
 }
 
@@ -162,7 +162,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     new_len = handler->chunk.chunk_mem_len + CHUNK_LEN_PADDING;
     compressed = (char*)malloc(new_len);
     if (!compressed) {
-        trace_warning("Not enough memory (%u bytes)", new_len);
+        trace_error("Not enough memory (%u bytes)", new_len);
         return;
     }
 
@@ -280,7 +280,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         handler->chunk.chunk_mem_len = mem_len;
         handler->chunk.chunk_mem = (u_int8_t*)malloc(mem_len);
         if (handler->chunk.chunk_mem == NULL) {
-            trace_warning("Not enough memory (%u bytes)", mem_len);
+            trace_error("Not enough memory (%u bytes)", mem_len);
             return -2;
         }
 
@@ -301,7 +301,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 
             ptr = (u_int8_t*)malloc(handler->chunk.chunk_mem_len + len);
             if (ptr == NULL) {
-                trace_warning("Not enough memory (%u bytes)",
+                trace_error("Not enough memory (%u bytes)",
                               handler->chunk.chunk_mem_len+len);
                 free(value);
                 return -2;
@@ -391,8 +391,8 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
         handler->chunk.chunk_mem =
             (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
         if (handler->chunk.chunk_mem == NULL) {
-            trace_warning("Not enough memory (%u bytes)",
-                          handler->chunk.chunk_mem_len);
+            trace_error("Not enough memory (%u bytes)",
+                        handler->chunk.chunk_mem_len);
             return -2;
         }
 
@@ -419,8 +419,8 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
         u_int8_t *ptr = malloc(new_len);
 
         if (!ptr) {
-            trace_warning("Not enough memory (%u bytes): unable to grow "
-                          "table", new_len);
+            trace_error("Not enough memory (%u bytes): unable to grow "
+                        "table", new_len);
             return -2;
         }
 
