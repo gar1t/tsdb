@@ -137,7 +137,7 @@ static void open_db(char *file, tsdb_handler *db) {
 }
 
 static int goto_epoch(tsdb_handler *db, u_int32_t epoch) {
-    if (tsdb_goto_epoch(db, epoch, 0, 0, 0)) {
+    if (tsdb_goto_epoch(db, epoch, 1, 0)) {
         return 0;
     } else {
         return 1;

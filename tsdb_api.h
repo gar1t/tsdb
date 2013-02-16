@@ -39,8 +39,6 @@ typedef struct {
   u_int8_t growable;
   u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
   u_int32_t base_index;
-  u_int8_t load_on_demand;
-  u_int32_t load_epoch;
 } tsdb_chunk;
 
 typedef u_int32_t tsdb_value;
@@ -69,10 +67,9 @@ extern void tsdb_close(tsdb_handler *handler);
 extern void normalize_epoch(tsdb_handler *handler, u_int32_t *epoch);
 
 extern int tsdb_goto_epoch(tsdb_handler *handler,
-			    u_int32_t epoch_value,
-			    u_int8_t create_if_needed,
-			    u_int8_t growable,
-			    u_int8_t load_page_on_demand);
+                           u_int32_t epoch_value,
+                           u_int8_t fail_if_missing,
+                           u_int8_t growable);
 
 extern int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value);
 

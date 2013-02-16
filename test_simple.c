@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
 
     for (cur = start; cur <= stop; cur += slot_seconds) {
 
-        ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
+        ret = tsdb_goto_epoch(&db, cur, 0, 1);
         assert_int_equal(0, ret);
 
         // Write keys.
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
 
     for (cur = start; cur <= stop; cur += slot_seconds) {
 
-        ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
+        ret = tsdb_goto_epoch(&db, cur, 1, 0);
         assert_int_equal(0, ret);
 
         // Read keys.

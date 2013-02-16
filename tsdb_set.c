@@ -78,7 +78,7 @@ static void open_db(char *file, tsdb_handler *db) {
 }
 
 static void goto_epoch(tsdb_handler *db, u_int32_t epoch) {
-    if (tsdb_goto_epoch(db, epoch, 1, 1, 0) ) {
+    if (tsdb_goto_epoch(db, epoch, 0, 1) ) {
         printf("tsdb-set: error settting epoch\n");
         exit(1);
     }
