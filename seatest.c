@@ -22,6 +22,7 @@
 
 #include "seatest.h"
 #include <string.h>
+#include <stdlib.h>
 #ifdef WIN32
 #include "windows.h"
 int seatest_is_string_equal_i(const char* s1, const char* s2)
