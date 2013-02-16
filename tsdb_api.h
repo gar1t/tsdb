@@ -37,7 +37,6 @@ typedef struct {
   u_int32_t chunk_mem_len;
   u_int32_t begin_epoch;
   u_int8_t growable;
-  u_int32_t num_indexes;
   u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
   u_int32_t base_index;
   u_int8_t load_page_on_demand;

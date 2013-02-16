@@ -169,7 +169,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     // Split chunks on the DB
     num_fragments = handler->chunk.chunk_mem_len / fragment_size;
 
-    for (i=0; i<num_fragments; i++) {
+    for (i=0; i < num_fragments; i++) {
         u_int offset;
 
         if ((!handler->read_only) && handler->chunk.fragment_changed[i]) {
@@ -276,8 +276,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         trace_info("Creating epoch %u", epoch_value);
 
         handler->chunk.begin_epoch = epoch_value;
-        handler->chunk.num_indexes = CHUNK_GROWTH;
-        u_int32_t mem_len = handler->values_len * handler->chunk.num_indexes;
+        u_int32_t mem_len = handler->values_len * CHUNK_GROWTH;
         handler->chunk.chunk_mem_len = mem_len;
         handler->chunk.chunk_mem = (u_int8_t*)malloc(mem_len);
         if (handler->chunk.chunk_mem == NULL) {
@@ -333,8 +332,6 @@ int tsdb_goto_epoch(tsdb_handler *handler,
         }
 
         handler->chunk.begin_epoch = epoch_value;
-        handler->chunk.num_indexes = (handler->chunk.chunk_mem_len
-                                      / handler->values_len);
     }
 
     handler->chunk.growable = growable;
@@ -403,8 +400,6 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
                        &handler->state_decompress);
 
         handler->chunk.begin_epoch = handler->chunk.load_epoch;
-        handler->chunk.num_indexes =
-            handler->chunk.chunk_mem_len / handler->values_len;
         handler->chunk.base_index = fragment_id * CHUNK_GROWTH;
 
         // Shift index
@@ -413,10 +408,9 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
 
  get_offset:
 
-    if (index >= handler->chunk.num_indexes) {
+    if (index >= (handler->chunk.chunk_mem_len / handler->values_len)) {
         if (!handler->chunk.growable) {
-            trace_error("Index %u out of range %u...%u",
-                        index, 0, handler->chunk.num_indexes);
+            trace_error("Index %u out of range", index);
             return -1;
         }
 
@@ -433,11 +427,10 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
         memcpy(ptr, handler->chunk.chunk_mem, handler->chunk.chunk_mem_len);
         memset(&ptr[handler->chunk.chunk_mem_len],
                handler->unknown_value, to_add);
-        handler->chunk.num_indexes += CHUNK_GROWTH;
         handler->chunk.chunk_mem = ptr;
         handler->chunk.chunk_mem_len = new_len;
 
-        trace_info("Epoch grown to %u", handler->chunk.num_indexes);
+        trace_warning("Epoch grown to %u", new_len);
 
         goto get_offset;
     }
