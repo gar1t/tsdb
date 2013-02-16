@@ -13,14 +13,13 @@ static char *get_file_arg(int argc, char *argv[]) {
     return file;
 }
 
-#define num_epochs 100
+#define num_epochs 10
 #define slot_seconds 60
-#define num_keys 1000
+#define num_keys 10001
 
 int main(int argc, char *argv[]) {
 
     char *file = get_file_arg(argc, argv);
-    set_trace_level(0);
 
     tsdb_handler db;
     int ret;
@@ -29,6 +28,8 @@ int main(int argc, char *argv[]) {
     uint i;
     uint write_val;
     uint *read_val;
+
+    set_trace_level(1);
 
     // Open (create) a new db.
 
