@@ -77,3 +77,5 @@ extern int tsdb_goto_epoch(tsdb_handler *handler,
 extern int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value);
 
 extern int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value);
+
+extern void tsdb_flush(tsdb_handler *handler);

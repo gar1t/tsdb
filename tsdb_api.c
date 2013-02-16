@@ -502,3 +502,12 @@ int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value) {
 
     return rc ;
 }
+
+void tsdb_flush(tsdb_handler *handler) {
+    if (!handler->alive || handler->read_only) {
+        return;
+    }
+    trace_info("Flushing database changes");
+    tsdb_flush_chunk(handler);
+    handler->db->sync(handler->db, 0);
+}

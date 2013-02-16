@@ -56,6 +56,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    tsdb_flush(&db);
+
     // Move through epochs for reads.
 
     for (cur = start; cur <= stop; cur += slot_seconds) {
