@@ -169,9 +169,9 @@ static void print_vals(u_int32_t epoch, int count, tsdb_value *vals) {
 static void print_key_vals(tsdb_handler *db, char *key, u_int32_t epoch) {
     tsdb_value *vals;
     if (get_vals(db, key, &vals) >= 0) {
-        print_vals(epoch, db->num_values_per_entry, vals);
+        print_vals(epoch, db->values_per_entry, vals);
     } else {
-        print_missing(epoch, db->num_values_per_entry);
+        print_missing(epoch, db->values_per_entry);
     }
 }
 
@@ -179,7 +179,7 @@ static void print_epoch_vals(tsdb_handler *db, u_int32_t epoch, char *key) {
     if (goto_epoch(db, epoch)) {
         print_key_vals(db, key, epoch);
     } else {
-        print_missing(epoch, db->num_values_per_entry);
+        print_missing(epoch, db->values_per_entry);
     }
 }
 
@@ -193,7 +193,7 @@ static void print_tsdb_values(char *file, char *key, u_int32_t start,
     normalize_epoch(&db, &cur_epoch);
     normalize_epoch(&db, &end);
     if (interval <= 0) {
-        interval = db.rrd_slot_time_duration;
+        interval = db.slot_duration;
     }
 
     while (cur_epoch <= end) {

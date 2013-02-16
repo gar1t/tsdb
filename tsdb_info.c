@@ -59,8 +59,8 @@ static void print_db_info(char *file) {
 
     printf("          File: %s\n", file);
     printf("          Size: %zd\n", info.st_size);
-    printf("Vals Per Entry: %u\n", db.num_values_per_entry);
-    printf("  Slot Seconds: %u\n", db.rrd_slot_time_duration);;
+    printf("Vals Per Entry: %u\n", db.values_per_entry);
+    printf("  Slot Seconds: %u\n", db.slot_duration);;
     tsdb_close(&db);
 }
 

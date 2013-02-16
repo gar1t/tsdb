@@ -107,7 +107,7 @@ static void set_tsdb_values(set_args *args) {
     u_int32_t epoch = (args->timestamp ? args->timestamp : time(NULL));
 
     open_db(args->file, &db);
-    values = alloc_values(args, db.num_values_per_entry);
+    values = alloc_values(args, db.values_per_entry);
     goto_epoch(&db, epoch);
     set_values(&db, args->key, values);
     free(values);
