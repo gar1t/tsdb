@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 
         for (i = 1; i <= num_keys; i++) {
             sprintf(key, "key-%i", i);
-            ret = tsdb_get(&db, key, &read_val);
+            ret = tsdb_get_by_key(&db, key, &read_val);
             assert_int_equal(0, ret);
             write_val = i * 1000;
             assert_int_equal(write_val, *read_val);

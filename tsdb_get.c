@@ -145,7 +145,7 @@ static int goto_epoch(tsdb_handler *db, u_int32_t epoch) {
 }
 
 static int get_vals(tsdb_handler *db, char *key, tsdb_value **vals) {
-    return tsdb_get(db, key, vals);
+    return tsdb_get_by_key(db, key, vals);
 }
 
 static void print_missing(u_int32_t epoch, int value_count) {

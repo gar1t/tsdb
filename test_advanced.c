@@ -31,6 +31,10 @@ int main(int argc, char *argv[]) {
     ret = tsdb_open(file, &db, &vals_per_entry, slot_seconds, 0);
     assert_int_equal(0, ret);
 
+    //===================================================================
+    // Basic read / write
+    //===================================================================
+
     // Move to an epoch that isn't there and indicate we want to fail.
     // This is useful when reading values -- there's no point in trying
     // a value if the epoch doesn't exist.
@@ -56,7 +60,7 @@ int main(int argc, char *argv[]) {
     // Next we'll try to read a key -- there's no epoch data, so it will
     // fail.
     //
-    ret = tsdb_get(&db, "key-1", &read_val);
+    ret = tsdb_get_by_key(&db, "key-1", &read_val);
     assert_int_equal(-1, ret);
 
     // We still haven't loaded any data for the epoch.
@@ -72,7 +76,7 @@ int main(int argc, char *argv[]) {
 
     // And read it back.
     //
-    ret = tsdb_get(&db, "key-1", &read_val);
+    ret = tsdb_get_by_key(&db, "key-1", &read_val);
     assert_int_equal(0, ret);
     assert_int_equal(111, *read_val);
 
@@ -85,7 +89,7 @@ int main(int argc, char *argv[]) {
 
     // And read them back.
     //
-    ret = tsdb_get(&db, "key-2", &read_val);
+    ret = tsdb_get_by_key(&db, "key-2", &read_val);
     assert_int_equal(0, ret);
     assert_int_equal(111, read_val[0]);
     assert_int_equal(222, read_val[1]);
@@ -104,7 +108,7 @@ int main(int argc, char *argv[]) {
 
     // Reading a key that doesn't exit.
     //
-    ret = tsdb_get(&db, "key-1", &read_val);
+    ret = tsdb_get_by_key(&db, "key-1", &read_val);
     assert_int_equal(-1, ret);
 
     // Writing the key.
@@ -123,10 +127,10 @@ int main(int argc, char *argv[]) {
 
     // And read some values.
     //
-    ret = tsdb_get(&db, "key-1", &read_val);
+    ret = tsdb_get_by_key(&db, "key-1", &read_val);
     assert_int_equal(0, ret);
     assert_int_equal(111, *read_val);
-    ret = tsdb_get(&db, "key-2", &read_val);
+    ret = tsdb_get_by_key(&db, "key-2", &read_val);
     assert_int_equal(0, ret);
     assert_int_equal(111, read_val[0]);
     assert_int_equal(222, read_val[1]);
@@ -135,15 +139,24 @@ int main(int argc, char *argv[]) {
     //
     ret = tsdb_goto_epoch(&db, 120, 1, 0);
     assert_int_equal(0, ret);
-    ret = tsdb_get(&db, "key-1", &read_val);
+    ret = tsdb_get_by_key(&db, "key-1", &read_val);
     assert_int_equal(0, ret);
     assert_int_equal(22222, read_val[0]);
     assert_int_equal(33333, read_val[1]);
 
-    // Next, we'll cause an epoch to grow past its original allocated
-    // size by adding a large number of keys.
+    //===================================================================
+    // Epoch growth
+    //===================================================================
+
+    // tsdb initially allocates a chunk (array) to store keys. When
+    // the chunk is full and additional space is needed because to
+    // accommodate new keys, tsdb will grow the chunk size.
     //
-    // Let's move to the next epoch to start. We'll indicate that we
+    // Let's illustrate by filling up a chunk, measuring the chunk
+    // size, and then adding new keys to verify that the chunk size
+    // grows.
+    //
+    // We'll  move to the next epoch to start. We'll indicate that we
     // don't want to fail if the epoch is missing and that we want the
     // epoch to grow as needed to accommodate keys.
     //
@@ -195,11 +208,53 @@ int main(int argc, char *argv[]) {
     //
     for (i = 0; i < keys_per_chunk; i++) {
         sprintf(key, "key-%i", i + 1);
-        ret = tsdb_get(&db, key, &read_val);
+        ret = tsdb_get_by_key(&db, key, &read_val);
         assert_int_equal(0, ret);
         assert_int_equal(444444, read_val[0]);
         assert_int_equal(555555, read_val[1]);
     }
+
+    //===================================================================
+    // Lookup by index
+    //===================================================================
+
+    // tsdb supports lookup by key, however, it also provides an
+    // optimization that lets you retrieve a key's index and use it
+    // to read values more efficiently from an epoch. This works because,
+    // once assigned, a key is always associated with the same index
+    // for the life of the tsdb database.
+    //
+    // This is useful when scanning a series of epochs for a one or more
+    // keys -- rather than lookup the associated key index for each
+    // epoch, the caller can save and reuse the applicable indexes.
+    //
+    // Let's retrieve the index for "key-1" (one of the keys we've written
+    // to this database) and use it to read a value from the current
+    // epoch.
+    //
+    u_int32_t index;
+    ret = tsdb_get_key_index(&db, "key-1", &index);
+    assert_int_equal(0, ret);
+    ret = tsdb_get_by_index(&db, &index, &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(444444, read_val[0]);
+    assert_int_equal(555555, read_val[1]);
+
+    // We can read up to the maximum index (chunk slots - 1) but no
+    // further. We've already expanded the chunk size, so can currently
+    // read up to two chunk's worth of values using indexes.
+    //
+    index = (keys_per_chunk * 2) - 1;
+    ret = tsdb_get_by_index(&db, &index, &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(0, read_val[0]);
+    assert_int_equal(0, read_val[1]);
+
+    // Reading passed the last item fails.
+    //
+    index++;
+    ret = tsdb_get_by_index(&db, &index, &read_val);
+    assert_int_equal(-1, ret);
 
     tsdb_close(&db);
 

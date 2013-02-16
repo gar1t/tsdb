@@ -220,7 +220,7 @@ void normalize_epoch(tsdb_handler *handler, u_int32_t *epoch) {
     *epoch += timezone - daylight * 3600;
 }
 
-static int get_key_index(tsdb_handler *handler, char *key, u_int32_t *index) {
+int tsdb_get_key_index(tsdb_handler *handler, char *key, u_int32_t *index) {
     void *ptr;
     u_int32_t len;
     char str[32] = { 0 };
@@ -316,7 +316,7 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 
 static int ensure_key_index(tsdb_handler *handler, char *key,
                             u_int32_t *index, u_int8_t for_write) {
-    if (get_key_index(handler, key, index) == 0) {
+    if (tsdb_get_key_index(handler, key, index) == 0) {
         trace_info("Index %s mapped to hash %u", key, *index);
         return 0;
     }
@@ -337,23 +337,15 @@ static int ensure_key_index(tsdb_handler *handler, char *key,
     return 0;
 }
 
-static int prepare_read_write(tsdb_handler *handler, char *key,
-                              u_int64_t *offset, u_int8_t for_write) {
-    u_int32_t index;
-
-    if (!handler->chunk.epoch) {
-        return -1;
-    }
-
-    if (ensure_key_index(handler, key, &index, for_write) == -1) {
-        trace_info("Unable to find index %s", key);
-        return -1;
-    }
-
-    trace_info("%s mapped to idx %u", key, index);
+static int prepare_offset_by_index(tsdb_handler *handler, u_int32_t *index,
+                                   u_int64_t *offset, u_int8_t for_write) {
 
     if (!handler->chunk.data) {
-        u_int32_t fragment = index / CHUNK_GROWTH, value_len;
+        if (!for_write) {
+            return -1;
+        }
+
+        u_int32_t fragment = *index / CHUNK_GROWTH, value_len;
         char str[32];
         void *value;
 
@@ -388,9 +380,8 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
 
  get_offset:
 
-    if (index >= (handler->chunk.data_len / handler->values_len)) {
-        if (!handler->chunk.growable) {
-            trace_error("Index %u out of range", index);
+    if (*index >= (handler->chunk.data_len / handler->values_len)) {
+        if (!for_write || !handler->chunk.growable) {
             return -1;
         }
 
@@ -415,15 +406,32 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
         goto get_offset;
     }
 
-    *offset = handler->values_len * index;
+    *offset = handler->values_len * *index;
 
     if (*offset >= handler->chunk.data_len) {
-        trace_error("INTERNAL ERROR [Id: %s/%u][Offset: %u/%u]",
-                    key, index, *offset,
-                    handler->chunk.data_len);
+        trace_error("INTERNAL ERROR [Id: %u][Offset: %u/%u]",
+                    *index, *offset, handler->chunk.data_len);
     }
 
     return 0;
+}
+
+static int prepare_offset_by_key(tsdb_handler *handler, char *key,
+                                 u_int64_t *offset, u_int8_t for_write) {
+    u_int32_t index;
+
+    if (!handler->chunk.epoch) {
+        return -1;
+    }
+
+    if (ensure_key_index(handler, key, &index, for_write) == -1) {
+        trace_info("Unable to find index %s", key);
+        return -1;
+    }
+
+    trace_info("%s mapped to idx %u", key, index);
+
+    return prepare_offset_by_index(handler, &index, offset, for_write);
 }
 
 int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
@@ -440,7 +448,7 @@ int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
         return -2;
     }
 
-    rc = prepare_read_write(handler, key, &offset, 1);
+    rc = prepare_offset_by_key(handler, key, &offset, 1);
     if (rc == 0) {
         chunk_ptr = (tsdb_value*)(&handler->chunk.data[offset]);
         memcpy(chunk_ptr, value, handler->values_len);
@@ -458,19 +466,32 @@ int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
     return rc;
 }
 
-int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value) {
+int tsdb_get_by_key(tsdb_handler *handler, char *key, tsdb_value **value) {
     u_int64_t offset;
     int rc;
 
-    if (!handler->alive) {
+    if (!handler->alive || !handler->chunk.data) {
         return -1;
     }
 
-    if (!handler->chunk.data) {
+    rc = prepare_offset_by_key(handler, key, &offset, 0);
+    if (rc == 0) {
+        *value = (tsdb_value*)(handler->chunk.data + offset);
+    }
+
+    return rc ;
+}
+
+int tsdb_get_by_index(tsdb_handler *handler, u_int32_t *index,
+                      tsdb_value **value) {
+    u_int64_t offset;
+    int rc;
+
+    if (!handler->alive || !handler->chunk.data) {
         return -1;
     }
 
-    rc = prepare_read_write(handler, key, &offset, 0);
+    rc = prepare_offset_by_index(handler, index, &offset, 0);
     if (rc == 0) {
         *value = (tsdb_value*)(handler->chunk.data + offset);
     }
