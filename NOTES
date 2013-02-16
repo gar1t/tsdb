@@ -423,43 +423,59 @@ This is pointless. We can use the next counter authoritatively.
 
 Should be a void.
 
-** TODO Consider: Get rid of "on demand" option
+** TODO Possibly simplify goto_epoch options
 
-Unless there's a point to having the "load page on demand" feature an option,
-we should pick one behavior and make it the standard (i.e. no option).
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| # | Exists | Option   | Value | Create | Load | Ret | Writable | Scrap |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 1 | no     | create   |     0 | no     | n/a  |  -1 | no       |       |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 3 | no     | create   |     1 | yes    | yes  |   0 | yes      |       |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 5 | no     | create   |     0 | no     | no   |   0 | no       |       |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 7 | no     | create   |     1 | yes    | no   |   0 | yes      |       |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 2 | yes    | create   |     0 | n/a    | yes  |   0 | yes      | y     |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 4 | yes    | create   |     1 | n/a    | yes  |   0 | yes      | y     |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 6 | yes    | create   |     0 | n/a    | no   |   0 | yes      | y     |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 8 | yes    | create   |     1 | n/a    | no   |   0 | yes      | y     |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
 
-The default should be "on demand" -- unless:
+1. Fail if the epoch isn't there. This is useful for checking if an epoch
+   exists. Could be handled with fail_if_missing=1 flag.
 
-- There's a reason to proactively load the page (e.g. check size)
-- On demand doesn't work for some reason
-- There's absolutely no reason to call goto and *not* try to read or write
+2. Actively load the epoch if it's there.
 
-Though it does look like chunks are created on "goto epoch" regardless of if
-they're written to (how could the call know, but for the on_demand flag)?
+  if epoch found:
+      load current epoch
+  else:
+      if error_on_missing flag:
+          return error
+      else:
+          set current epoch as missing, create/load on demand on first write
+          return success
 
-So it might be that the flag is there to avoid creating the epoch data for
-reads.
+Proposed API:
 
-Now we're back to asking, what's the point of actively creating the data?
+   tsdb_goto_epoch(db, epoch, fail_on_missing)
 
-OR: maybe what "goto epoch" wants is a "read_mode" flag, which means:
+Refactor notes:
 
-- if true don't create on demand
-- if false, load what's there
+- flush has a multiplication op before checking for chunk = NULL, reorder
 
-** TODO get_key_offset -> two functions
-
-I think we want to refacgtor get_key_offset into two functions:
-
-- prepare_offset_for_read
-- prepare_offset_for_write
-
-This is much easier to understand and corresponds with the way it's used in
-tsdb_get and tsdb_set.
-
-The term "prepare" (rather than "get") clearly denotes that there's a setup
-cost to the function.
-
+** DONE get_key_offset -> prepare_read_write
 ** TODO Consider: Get rid of "read only" mode
 
 Not sure if there's any point to this -- unless it's to support "reader"
