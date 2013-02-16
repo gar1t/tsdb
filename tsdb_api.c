@@ -343,14 +343,13 @@ int tsdb_goto_epoch(tsdb_handler *handler,
 }
 
 static int ensure_key_index(tsdb_handler *handler, char *key,
-                            u_int32_t *index, u_int8_t create_if_needed) {
-    // Check if this is a known value
+                            u_int32_t *index, u_int8_t for_write) {
     if (get_key_index(handler, key, index) == 0) {
         trace_info("Index %s mapped to hash %u", key, *index);
         return 0;
     }
 
-    if (!create_if_needed) {
+    if (!for_write) {
         trace_info("Unable to find index %s", key);
         return -1;
     }
@@ -366,11 +365,12 @@ static int ensure_key_index(tsdb_handler *handler, char *key,
     return 0;
 }
 
-static int get_key_offset(tsdb_handler *handler, char *key,
-                          u_int64_t *offset, u_int8_t create_if_needed) {
+static int prepare_key_operation(tsdb_handler *handler, char *key,
+                                 u_int64_t *offset,
+                                 u_int8_t for_write) {
     u_int32_t index;
 
-    if (ensure_key_index(handler, key, &index, create_if_needed) == -1) {
+    if (ensure_key_index(handler, key, &index, for_write) == -1) {
         trace_info("Unable to find index %s", key);
         return -1;
     }
@@ -443,8 +443,6 @@ static int get_key_offset(tsdb_handler *handler, char *key,
         goto get_offset;
     }
 
-    // All hashes of one day are one attached to the other: fast insert,
-    // slow data extraction
     *offset = handler->values_len * index;
 
     if (*offset >= handler->chunk.chunk_mem_len) {
@@ -456,10 +454,8 @@ static int get_key_offset(tsdb_handler *handler, char *key,
     return 0;
 }
 
-int tsdb_set(tsdb_handler *handler,
-	     char *hash_index,
-	     tsdb_value *value_to_store) {
-    u_int32_t *value;
+int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
+    u_int32_t *chunk_ptr;
     u_int64_t offset;
     int rc;
 
@@ -473,13 +469,13 @@ int tsdb_set(tsdb_handler *handler,
         return -2;
     }
 
-    if ((rc = get_key_offset(handler, hash_index, &offset, 1)) == 0) {
-        int fragment_id = offset/CHUNK_GROWTH;
-
-        value = (tsdb_value*)(&handler->chunk.chunk_mem[offset]);
-        memcpy(value, value_to_store, handler->values_len);
+    rc = prepare_key_operation(handler, key, &offset, 1);
+    if (rc == 0) {
+        chunk_ptr = (tsdb_value*)(&handler->chunk.chunk_mem[offset]);
+        memcpy(chunk_ptr, value, handler->values_len);
 
         // Mark a fragment as changed
+        int fragment_id = offset / CHUNK_GROWTH;
         if (fragment_id > MAX_NUM_FRAGMENTS) {
             trace_error("Internal error [%u > %u]",
                         fragment_id, MAX_NUM_FRAGMENTS);
@@ -491,13 +487,11 @@ int tsdb_set(tsdb_handler *handler,
     return rc;
 }
 
-int tsdb_get(tsdb_handler *handler,
-             char *hash_index,
-             tsdb_value **value_to_read) {
+int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value) {
     u_int64_t offset;
     int rc;
 
-    *value_to_read = &handler->unknown_value;
+    *value = &handler->unknown_value;
 
     if (!handler->alive) {
         return -1;
@@ -509,8 +503,9 @@ int tsdb_get(tsdb_handler *handler,
         return -2;
     }
 
-    if ((rc = get_key_offset(handler, hash_index, &offset, 0)) == 0) {
-        *value_to_read = (tsdb_value*)(handler->chunk.chunk_mem + offset);
+    rc = prepare_key_operation(handler, key, &offset, 0);
+    if (rc == 0) {
+        *value = (tsdb_value*)(handler->chunk.chunk_mem + offset);
     }
 
     return rc ;
