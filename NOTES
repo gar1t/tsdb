@@ -383,6 +383,29 @@ they're already being cached by the database. As long as we're not compressing
 the array, it *might* be the case that we have direct access to the database's
 value in memory.
 
+* Bugs
+
+** test-simple fails sometimes, related to tracing
+
+Steps to reproduce:
+
+- Force a chunk growth with test-simple
+
+The test typically fails with:
+
+  main        Line 75    Expected 1000 but was 0
+
+Ways to make the test pass:
+
+- Set log level below warnings
+- Comment out the trace msg
+- trace something before the test is run (e.g. at the top of test_simple:main)
+- Comment out this line in tsdb_trace.c:
+
+  strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
+
+This very odd behavior feels like a race condition, but on what I have no idea.
+
 * Next Steps
 
 ** DONE Clean up source
@@ -423,7 +446,7 @@ This is pointless. We can use the next counter authoritatively.
 
 Should be a void.
 
-** TODO Possibly simplify goto_epoch options
+** DONE Possibly simplify goto_epoch options
 
 |---+--------+----------+-------+--------+------+-----+----------+-------|
 | # | Exists | Option   | Value | Create | Load | Ret | Writable | Scrap |
@@ -469,18 +492,14 @@ Should be a void.
 
 Proposed API:
 
-   tsdb_goto_epoch(db, epoch, fail_on_missing)
-
-Refactor notes:
-
-- flush has a multiplication op before checking for chunk = NULL, reorder
+   tsdb_goto_epoch(db, epoch, fail_on_missing, growable)
 
 ** DONE get_key_offset -> prepare_read_write
-** TODO Consider: Get rid of "read only" mode
+** TODO Sure up read only mode
 
-Not sure if there's any point to this -- unless it's to support "reader"
-access.
+Need some tests for read only mode.
 
+** TODO Test growable = false and new keys
 ** TODO Exit on impossible conditions
 
 malloc, e.g. should cause an immediate exit.
