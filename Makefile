@@ -14,7 +14,8 @@ TARGETS      = $(TSDB_LIB) \
                tsdb-set \
                tsdb-get \
                test-simple \
-               test-advanced
+               test-advanced \
+               test-bitmaps
 
 all: $(TARGETS)
 

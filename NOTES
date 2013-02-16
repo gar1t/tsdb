@@ -208,7 +208,7 @@ but with tag based queries.
 
 * Longer Term
 
-** Lookup by index
+** DONE Lookup by index
 
 Provide an API for looking up epoch values using the epoch array offset
 directly, rather than dereference it each time:
@@ -222,106 +222,108 @@ This would require a corresponding function for getting a key's array offset:
 We'd use this for range queries of a particular key by looking up the index
 first, then using it for each epoch.
 
-** Tags
+** TODO Tags
 
 Support a new index type: a tab.
 
 The function would look like this:
 
-  tsdb_add_key_tags(db, key, tags)
+  tsdb_add_key_tag(db, key, tag)
 
 E.g.
 
-  tsdb_add_key_tag(db, "test-123", "metric=cpu")
-  tsdb_add_key_tag(db, "test-123", "server_id=123")
-  tsdb_add_key_tag(db, "test-123", "server_size=small")
+  tsdb_add_key_tag(db, "test-1", "metric=test")
+  tsdb_add_key_tag(db, "test-2", "server=2")
+  tsdb_add_key_tag(db, "test-3", "size=small")
 
 For each tag, ensure a tag-XXX entry in the database.
+
+Each tax-xxx db value would be an array of unsorted, unique key indexes.
 
 Each tag-XXX element would be an array. Each element in the array would be a 0
 or 1. 1 indicates that the tag applies to the epoch values at the correponding
 index. E.g. if position 0 of the tag array contained a 1, it would indicate
 that the tag applied to epoch values at position 1.
 
-Let's consider an example. We'll start by adding a value to an empty database:
+For example, we'll start by adding a value to an empty database:
 
-  tsdb_goto_epoch(db, 1)
-  tsdb_set(db, "test-123", 56)
+  tsdb_goto_epoch(db, 60, 0, 0)
+  tsdb_set(db, "test-1", 100)
 
 We have in our db the following:
 
-  key-test-123: 0
-  1-0: [ 56 ]
+  key-test-1: 0
+  60-0: [ 56 ]
 
-Let's add another key:
+And another key:
 
-  tsdb_set(db, "test-456", 82)
+  tsdb_set(db, "test-2", 200)
 
 Our db:
 
-  key-test-123: 0
-  key-test-456: 1
-  1-0: [ 56, 82 ]
+  key-test-1: 0
+  key-test-2: 1
+  1-0: [ 100, 200 ]
 
-Now let's tag a key:
+Let's tag a key:
 
-  tsdb_add_key_tag(db, "test-123", "metric=cpu")
+  tsdb_add_key_tag(db, "test-1", "metric=test")
 
 Our db has a new value:
 
-  tag-metric=cpu: [ 1 ]
+  tag-metric=test: [ 1 ]
 
-This indicates that the epoch values stored at index 0 (i.e. key test-123) have
-the tag "metric=cpu".
+This indicates that the epoch values stored at index 0 (i.e. key test-1) have
+the tag "metric=test".
 
-We'll do the same for test-456:
+We'll do the same for test-2:
 
-   tsdb_add_key_tag(db, "test-456", "metric=cpu")
+   tsdb_add_key_tag(db, "test-2", "metric=test")
 
 Now our tag element looks like this:
 
-  tag-metric=cpu: [ 1, 1 ]
+  tag-metric=test: [ 1, 1 ]
 
-Let's add some more tags:
+Some more tags:
 
-   tsdb_add_key_tag(db, "test-123", "server_id=123")
-   tsdb_add_key_tag(db, "test-123", "server_size=small")
-   tsdb_add_key_tag(db, "test-456", "server_id=456")
-   tsdb_add_key_tag(db, "test-456", "server_size=large")
+   tsdb_add_key_tag(db, "test-1", "server=1")
+   tsdb_add_key_tag(db, "test-1", "size=small")
+   tsdb_add_key_tag(db, "test-2", "server=2")
+   tsdb_add_key_tag(db, "test-2", "size=large")
 
 Here's the full listing of all tag elements:
 
-  tag-metric=cpu:        [ 1, 1 ]
-  tag-server_size=small: [ 1, 0 ]
-  tag-server_size=large: [ 0, 1 ]
-  tag-server_id=123:     [ 1, 0 ]
-  tag-server_id=456:     [ 0, 1 ]
+  tag-metric=test: [ 1, 1 ]
+  tag-size=small:  [ 1, 0 ]
+  tag-size=large:  [ 0, 1 ]
+  tag-server=1:    [ 1, 0 ]
+  tag-server=2:    [ 0, 1 ]
 
-Here's a query for metric=cpu & server_size=small
+Here's a query for metric=test & size=small:
 
-  tsdb_get_by_tag_intersection(db, ["metric=cpu", "server_size=small"])
+  "intersection of metric=test and size=small"
 
-This is how we'd implement answer the query:
+This is how we'd answer the query:
 
-- Load the arrays for each tag
+- Load the arrays for the tags metric=test and size=small
 - Apply a logic AND operation for each array cell, up to the shorted array
 - Return values for epoch positions for each resulting 1
 
 E.g.
 
-  tag-metric=cpu:        [ 1, 1 ]
-  tag-server_size=small: [ 1, 0 ]
-  AND:                   [ 1, 0 ]
+  tag-metric=test: [ 1, 1 ]
+  tag-size=small:  [ 1, 0 ]
+  AND:             [ 1, 0 ]
 
-We can implement a similar function for the union using OR. So the function:
+We can implement a similar function for the union using OR, e.g.
 
-  tsdb_get_by_tag_union(db, ["metric=cpu", "server_size=small"])
+  "union of metric=test and size=small"
 
-would be implemented like this:
+  tag-metric=test: [ 1, 1 ]
+  tag-size=small:  [ 1, 0 ]
+  OR:              [ 1, 1 ]
 
-  tag-metric=cpu:        [ 1, 1 ]
-  tag-server_size=small: [ 1, 0 ]
-  OR:                    [ 1, 1 ]
+*** More
 
 We can implement NOT operations, e.g.
 
