@@ -153,11 +153,12 @@ int tsdb_open(char *tsdb_path, tsdb_handler *handler,
 static void tsdb_flush_chunk(tsdb_handler *handler) {
     char *compressed;
     u_int compressed_len, new_len, num_fragments, i;
-    u_int fragment_size = handler->values_len * CHUNK_GROWTH;
+    u_int fragment_size;
     char str[32];
 
     if (!handler->chunk.chunk_mem) return;
 
+    fragment_size = handler->values_len * CHUNK_GROWTH;
     new_len = handler->chunk.chunk_mem_len + CHUNK_LEN_PADDING;
     compressed = (char*)malloc(new_len);
     if (!compressed) {
