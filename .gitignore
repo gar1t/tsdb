@@ -1,10 +1,4 @@
 *.a
 *.o
-*.tsdb
-test
-test2
-tsdbExport
-tsdb-create
-tsdb-info
-tsdb-set
-tsdb-get
+test-*
+tsdb-*

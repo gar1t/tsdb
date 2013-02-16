@@ -1,20 +1,8 @@
-#include <sys/stat.h>
-
-#include "tsdb_api.h"
-
-static int file_exists(char *filename) {
-    FILE *file;
-    if ((file = fopen(filename, "r"))) {
-        fclose(file);
-        return 1;
-    } else {
-        return 0;
-    }
-}
+#include "test_core.h"
 
 static char *get_file_arg(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "usage: test TEST-DB\n");
+        fprintf(stderr, "usage: test-simple TEST-DB\n");
         exit(1);
     }
     char *file = argv[1];
@@ -23,20 +11,6 @@ static char *get_file_arg(int argc, char *argv[]) {
         exit(1);
     }
     return file;
-}
-
-static void check(int result, char *msg) {
-    if (result != 0) {
-        fprintf(stderr, "Unexpected result from %s: %i", msg, result);
-        exit(1);
-    }
-}
-
-static void check_read_val(uint val, uint expected, char *key) {
-    if (val != expected) {
-        fprintf(stderr, "Got %u for %s, expected %u\n", val, key, expected);
-        exit(1);
-    }
 }
 
 #define num_epochs 100
@@ -56,13 +30,13 @@ int main(int argc, char *argv[]) {
     uint write_val;
     uint *read_val;
 
-    // open/create db
+    // Open (create) a new db.
 
     u_int16_t vals_per_entry = 1;
     ret = tsdb_open(file, &db, &vals_per_entry, slot_seconds, 0);
-    check(ret, "tsdb_open");
+    assert_int_equal(0, ret);
 
-    // move through epochs for writes
+    // Move through epochs for write.
 
     start = 1000000000;
     stop = start + (num_epochs - 1) * slot_seconds;
@@ -70,33 +44,33 @@ int main(int argc, char *argv[]) {
     for (cur = start; cur <= stop; cur += slot_seconds) {
 
         ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
-        check(ret, "tsdb_goto_epoch");
+        assert_int_equal(0, ret);
 
-        // write fields
+        // Write keys.
 
         for (i = 1; i <= num_keys; i++) {
             sprintf(key, "key-%i", i);
             write_val = i * 1000;
             ret = tsdb_set(&db, key, &write_val);
-            check(ret, "tsdb_set");
+            assert_int_equal(0, ret);
         }
     }
 
-    // move through epochs for reads
+    // Move through epochs for reads.
 
     for (cur = start; cur <= stop; cur += slot_seconds) {
 
         ret = tsdb_goto_epoch(&db, cur, 1, 1, 0);
-        check(ret, "tsdb_goto_epoch");
+        assert_int_equal(0, ret);
 
-        // read fields
+        // Read keys.
 
         for (i = 1; i <= num_keys; i++) {
             sprintf(key, "key-%i", i);
             ret = tsdb_get(&db, key, &read_val);
-            check(ret, "tsdb_get");
+            assert_int_equal(0, ret);
             write_val = i * 1000;
-            check_read_val(*read_val, write_val, key);
+            assert_int_equal(write_val, *read_val);
         }
     }
 
