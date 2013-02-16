@@ -156,10 +156,10 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     u_int fragment_size;
     char str[32];
 
-    if (!handler->chunk.chunk_mem) return;
+    if (!handler->chunk.data) return;
 
     fragment_size = handler->values_len * CHUNK_GROWTH;
-    new_len = handler->chunk.chunk_mem_len + CHUNK_LEN_PADDING;
+    new_len = handler->chunk.data_len + CHUNK_LEN_PADDING;
     compressed = (char*)malloc(new_len);
     if (!compressed) {
         trace_error("Not enough memory (%u bytes)", new_len);
@@ -167,7 +167,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     }
 
     // Split chunks on the DB
-    num_fragments = handler->chunk.chunk_mem_len / fragment_size;
+    num_fragments = handler->chunk.data_len / fragment_size;
 
     for (i=0; i < num_fragments; i++) {
         u_int offset;
@@ -175,7 +175,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
         if ((!handler->read_only) && handler->chunk.fragment_changed[i]) {
             offset = i * fragment_size;
 
-            compressed_len = qlz_compress(&handler->chunk.chunk_mem[offset],
+            compressed_len = qlz_compress(&handler->chunk.data[offset],
                                           compressed, fragment_size,
                                           &handler->state_compress);
 
@@ -183,7 +183,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
                        fragment_size, compressed_len, i,
                        ((float)(compressed_len*100))/((float)fragment_size));
 
-            snprintf(str, sizeof(str), "%u-%u", handler->chunk.begin_epoch, i);
+            snprintf(str, sizeof(str), "%u-%u", handler->chunk.epoch, i);
 
             db_put(handler, str, strlen(str), compressed, compressed_len);
         } else {
@@ -192,7 +192,7 @@ static void tsdb_flush_chunk(tsdb_handler *handler) {
     }
 
     free(compressed);
-    free(handler->chunk.chunk_mem);
+    free(handler->chunk.data);
     memset(&handler->chunk, 0, sizeof(handler->chunk));
 }
 
@@ -244,10 +244,10 @@ static void set_key_index(tsdb_handler *handler, char *key, u_int32_t index) {
 }
 
 int tsdb_goto_epoch(tsdb_handler *handler,
-                    u_int32_t epoch_value,
+                    u_int32_t epoch,
                     u_int8_t create_if_needed,
                     u_int8_t growable,
-                    u_int8_t load_page_on_demand) {
+                    u_int8_t load_on_demand) {
     int rc;
     void *value;
     u_int32_t value_len, fragment_id = 0;
@@ -256,60 +256,60 @@ int tsdb_goto_epoch(tsdb_handler *handler,
     // Flush ond chunk if loaded
     tsdb_flush_chunk(handler);
 
-    normalize_epoch(handler, &epoch_value);
-    handler->chunk.load_page_on_demand = load_page_on_demand;
-    handler->chunk.load_epoch = epoch_value;
+    normalize_epoch(handler, &epoch);
+    handler->chunk.load_on_demand = load_on_demand;
+    handler->chunk.load_epoch = epoch;
 
-    if (handler->chunk.load_page_on_demand) {
+    if (handler->chunk.load_on_demand) {
         return 0;
     }
 
-    snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
+    snprintf(str, sizeof(str), "%u-%u", epoch, fragment_id);
     rc = db_get(handler, str, strlen(str), &value, &value_len);
 
     if (rc == -1) {
         if (!create_if_needed) {
-            trace_info("Unable to goto epoch %u", epoch_value);
+            trace_info("Unable to goto epoch %u", epoch);
             return -1;
         }
 
-        trace_info("Creating epoch %u", epoch_value);
+        trace_info("Creating epoch %u", epoch);
 
-        handler->chunk.begin_epoch = epoch_value;
+        handler->chunk.epoch = epoch;
         u_int32_t mem_len = handler->values_len * CHUNK_GROWTH;
-        handler->chunk.chunk_mem_len = mem_len;
-        handler->chunk.chunk_mem = (u_int8_t*)malloc(mem_len);
-        if (handler->chunk.chunk_mem == NULL) {
+        handler->chunk.data_len = mem_len;
+        handler->chunk.data = (u_int8_t*)malloc(mem_len);
+        if (handler->chunk.data == NULL) {
             trace_error("Not enough memory (%u bytes)", mem_len);
             return -2;
         }
 
-        memset(handler->chunk.chunk_mem,
+        memset(handler->chunk.data,
                handler->unknown_value,
-               handler->chunk.chunk_mem_len);
+               handler->chunk.data_len);
     } else {
         u_int32_t len, offset = 0;
         u_int8_t *ptr;
 
-        trace_info("Loading epoch %u", epoch_value);
+        trace_info("Loading epoch %u", epoch);
 
         fragment_id = 0;
-        handler->chunk.chunk_mem_len = 0;
+        handler->chunk.data_len = 0;
 
         while (1) {
             len = qlz_size_decompressed(value);
 
-            ptr = (u_int8_t*)malloc(handler->chunk.chunk_mem_len + len);
+            ptr = (u_int8_t*)malloc(handler->chunk.data_len + len);
             if (ptr == NULL) {
                 trace_error("Not enough memory (%u bytes)",
-                              handler->chunk.chunk_mem_len+len);
+                              handler->chunk.data_len+len);
                 free(value);
                 return -2;
             }
 
-            if (handler->chunk.chunk_mem_len > 0) {
-                memcpy(ptr, handler->chunk.chunk_mem,
-                       handler->chunk.chunk_mem_len);
+            if (handler->chunk.data_len > 0) {
+                memcpy(ptr, handler->chunk.data,
+                       handler->chunk.data_len);
             }
 
             len = qlz_decompress(value, &ptr[offset],
@@ -319,19 +319,19 @@ int tsdb_goto_epoch(tsdb_handler *handler,
                        value_len, len, fragment_id,
                        ((float)(len*100))/((float)value_len));
 
-            handler->chunk.chunk_mem_len += len;
-            fragment_id++, offset = handler->chunk.chunk_mem_len;
+            handler->chunk.data_len += len;
+            fragment_id++, offset = handler->chunk.data_len;
 
-            free(handler->chunk.chunk_mem);
-            handler->chunk.chunk_mem = ptr;
+            free(handler->chunk.data);
+            handler->chunk.data = ptr;
 
-            snprintf(str, sizeof(str), "%u-%u", epoch_value, fragment_id);
+            snprintf(str, sizeof(str), "%u-%u", epoch, fragment_id);
             if (db_get(handler, str, strlen(str), &value, &value_len) == -1) {
                 break; // No more fragments
             }
         }
 
-        handler->chunk.begin_epoch = epoch_value;
+        handler->chunk.epoch = epoch;
     }
 
     handler->chunk.growable = growable;
@@ -373,7 +373,7 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
 
     trace_info("%s mapped to idx %u", key, index);
 
-    if (handler->chunk.load_page_on_demand || handler->read_only) {
+    if (handler->chunk.load_on_demand || handler->read_only) {
         u_int32_t fragment_id = index / CHUNK_GROWTH, value_len;
         char str[32];
         void *value;
@@ -386,20 +386,20 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
             return -1;
         }
 
-        handler->chunk.chunk_mem_len = qlz_size_decompressed(value);
+        handler->chunk.data_len = qlz_size_decompressed(value);
 
-        handler->chunk.chunk_mem =
-            (u_int8_t*)malloc(handler->chunk.chunk_mem_len);
-        if (handler->chunk.chunk_mem == NULL) {
+        handler->chunk.data =
+            (u_int8_t*)malloc(handler->chunk.data_len);
+        if (handler->chunk.data == NULL) {
             trace_error("Not enough memory (%u bytes)",
-                        handler->chunk.chunk_mem_len);
+                        handler->chunk.data_len);
             return -2;
         }
 
-        qlz_decompress(value, handler->chunk.chunk_mem,
+        qlz_decompress(value, handler->chunk.data,
                        &handler->state_decompress);
 
-        handler->chunk.begin_epoch = handler->chunk.load_epoch;
+        handler->chunk.epoch = handler->chunk.load_epoch;
         handler->chunk.base_index = fragment_id * CHUNK_GROWTH;
 
         // Shift index
@@ -408,14 +408,14 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
 
  get_offset:
 
-    if (index >= (handler->chunk.chunk_mem_len / handler->values_len)) {
+    if (index >= (handler->chunk.data_len / handler->values_len)) {
         if (!handler->chunk.growable) {
             trace_error("Index %u out of range", index);
             return -1;
         }
 
         u_int32_t to_add = CHUNK_GROWTH * handler->values_len;
-        u_int32_t new_len = handler->chunk.chunk_mem_len + to_add;
+        u_int32_t new_len = handler->chunk.data_len + to_add;
         u_int8_t *ptr = malloc(new_len);
 
         if (!ptr) {
@@ -424,11 +424,11 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
             return -2;
         }
 
-        memcpy(ptr, handler->chunk.chunk_mem, handler->chunk.chunk_mem_len);
-        memset(&ptr[handler->chunk.chunk_mem_len],
+        memcpy(ptr, handler->chunk.data, handler->chunk.data_len);
+        memset(&ptr[handler->chunk.data_len],
                handler->unknown_value, to_add);
-        handler->chunk.chunk_mem = ptr;
-        handler->chunk.chunk_mem_len = new_len;
+        handler->chunk.data = ptr;
+        handler->chunk.data_len = new_len;
 
         trace_warning("Epoch grown to %u", new_len);
 
@@ -437,10 +437,10 @@ static int prepare_read_write(tsdb_handler *handler, char *key,
 
     *offset = handler->values_len * index;
 
-    if (*offset >= handler->chunk.chunk_mem_len) {
+    if (*offset >= handler->chunk.data_len) {
         trace_error("INTERNAL ERROR [Id: %s/%u][Offset: %u/%u]",
                     key, index, *offset,
-                    handler->chunk.chunk_mem_len);
+                    handler->chunk.data_len);
     }
 
     return 0;
@@ -455,15 +455,15 @@ int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
         return -1;
     }
 
-    if ((!handler->chunk.load_page_on_demand)
-        && (handler->chunk.chunk_mem == NULL)) {
+    if ((!handler->chunk.load_on_demand)
+        && (handler->chunk.data == NULL)) {
         trace_error("Missing epoch");
         return -2;
     }
 
     rc = prepare_read_write(handler, key, &offset, 1);
     if (rc == 0) {
-        chunk_ptr = (tsdb_value*)(&handler->chunk.chunk_mem[offset]);
+        chunk_ptr = (tsdb_value*)(&handler->chunk.data[offset]);
         memcpy(chunk_ptr, value, handler->values_len);
 
         // Mark a fragment as changed
@@ -489,15 +489,15 @@ int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value) {
         return -1;
     }
 
-    if ((!handler->chunk.load_page_on_demand)
-        && (handler->chunk.chunk_mem == NULL)) {
+    if ((!handler->chunk.load_on_demand)
+        && (handler->chunk.data == NULL)) {
         trace_error("Missing epoch");
         return -2;
     }
 
     rc = prepare_read_write(handler, key, &offset, 0);
     if (rc == 0) {
-        *value = (tsdb_value*)(handler->chunk.chunk_mem + offset);
+        *value = (tsdb_value*)(handler->chunk.data + offset);
     }
 
     return rc ;

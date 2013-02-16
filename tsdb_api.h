@@ -33,13 +33,13 @@
 #define MAX_NUM_FRAGMENTS 16384
 
 typedef struct {
-  u_int8_t *chunk_mem;
-  u_int32_t chunk_mem_len;
-  u_int32_t begin_epoch;
+  u_int8_t *data;
+  u_int32_t data_len;
+  u_int32_t epoch;
   u_int8_t growable;
   u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
   u_int32_t base_index;
-  u_int8_t load_page_on_demand;
+  u_int8_t load_on_demand;
   u_int32_t load_epoch;
 } tsdb_chunk;
 
