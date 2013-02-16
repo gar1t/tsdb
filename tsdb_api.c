@@ -365,9 +365,8 @@ static int ensure_key_index(tsdb_handler *handler, char *key,
     return 0;
 }
 
-static int prepare_key_operation(tsdb_handler *handler, char *key,
-                                 u_int64_t *offset,
-                                 u_int8_t for_write) {
+static int prepare_read_write(tsdb_handler *handler, char *key,
+                              u_int64_t *offset, u_int8_t for_write) {
     u_int32_t index;
 
     if (ensure_key_index(handler, key, &index, for_write) == -1) {
@@ -469,7 +468,7 @@ int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
         return -2;
     }
 
-    rc = prepare_key_operation(handler, key, &offset, 1);
+    rc = prepare_read_write(handler, key, &offset, 1);
     if (rc == 0) {
         chunk_ptr = (tsdb_value*)(&handler->chunk.chunk_mem[offset]);
         memcpy(chunk_ptr, value, handler->values_len);
@@ -503,7 +502,7 @@ int tsdb_get(tsdb_handler *handler, char *key, tsdb_value **value) {
         return -2;
     }
 
-    rc = prepare_key_operation(handler, key, &offset, 0);
+    rc = prepare_read_write(handler, key, &offset, 0);
     if (rc == 0) {
         *value = (tsdb_value*)(handler->chunk.chunk_mem + offset);
     }
