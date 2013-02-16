@@ -206,8 +206,118 @@ Or
 Same performance characteristics (storage, retrieval, space) of current tsdb,
 but with tag based queries.
 
-* Longer Term
+* Bugs
 
+** test-simple fails sometimes, related to tracing
+
+Steps to reproduce:
+
+- Force a chunk growth with test-simple
+
+The test typically fails with:
+
+  main        Line 75    Expected 1000 but was 0
+
+Ways to make the test pass:
+
+- Set log level below warnings
+- Comment out the trace msg
+- trace something before the test is run (e.g. at the top of test_simple:main)
+- Comment out this line in tsdb_trace.c:
+
+  strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
+
+This very odd behavior feels like a race condition, but on what I have no idea.
+
+* Next Steps
+
+** DONE Clean up source
+
+Source code could use some reformatting:
+
+- 79 max line length
+- Improved white spacing
+- Misc cleanup
+
+** DONE traceEvent to trace_info, etc
+** DONE Misc refactor
+
+*** DONE db_set -> db_put
+*** DONE lowerCamelCase to standard
+*** DONE consistent names
+
+- hash/hash_index -> index
+- name/hash_name -> key
+
+*** DONE Shorter names
+
+- num_xxx -> xxx
+- xxx_mode -> xxx
+- alive_and_kicking -> open
+
+** DONE Refactor map-XXX
+
+*** DONE Rename to key-XXX
+*** DONE Store only the index
+*** DONE Drop index map
+
+** DONE Refactor rsv-XXX
+
+This is pointless. We can use the next counter authoritatively.
+
+** DONE Refactor normalize_epoch
+
+Should be a void.
+
+** DONE Possibly simplify goto_epoch options
+
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| # | Exists | Option   | Value | Create | Load | Ret | Writable | Scrap |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 1 | no     | create   |     0 | no     | n/a  |  -1 | no       |       |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 3 | no     | create   |     1 | yes    | yes  |   0 | yes      |       |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 5 | no     | create   |     0 | no     | no   |   0 | no       |       |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 7 | no     | create   |     1 | yes    | no   |   0 | yes      |       |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 2 | yes    | create   |     0 | n/a    | yes  |   0 | yes      | y     |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 4 | yes    | create   |     1 | n/a    | yes  |   0 | yes      | y     |
+|   |        | ondemand |     0 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 6 | yes    | create   |     0 | n/a    | no   |   0 | yes      | y     |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+| 8 | yes    | create   |     1 | n/a    | no   |   0 | yes      | y     |
+|   |        | ondemand |     1 |        |      |     |          |       |
+|---+--------+----------+-------+--------+------+-----+----------+-------|
+
+1. Fail if the epoch isn't there. This is useful for checking if an epoch
+   exists. Could be handled with fail_if_missing=1 flag.
+
+2. Actively load the epoch if it's there.
+
+  if epoch found:
+      load current epoch
+  else:
+      if error_on_missing flag:
+          return error
+      else:
+          set current epoch as missing, create/load on demand on first write
+          return success
+
+Proposed API:
+
+   tsdb_goto_epoch(db, epoch, fail_on_missing, growable)
+
+** DONE get_key_offset -> prepare_read_write
 ** DONE Lookup by index
 
 Provide an API for looking up epoch values using the epoch array offset
@@ -221,6 +331,43 @@ This would require a corresponding function for getting a key's array offset:
 
 We'd use this for range queries of a particular key by looking up the index
 first, then using it for each epoch.
+** TODO More direct index support
+
+*** Return index used with tsdb_set
+
+We might as well return this value, as it's convenient. It can be used for
+followup index related operations, e.g. adding tags via index.
+
+*** add_tag_for_index
+
+We'll have the index when we set a value (see previous bullet) and can followup
+by adding applicable tags for it.
+
+If we maintained an index of uncompressed tags, this update operation would be
+0(1) as it's a bit set operation on the array index.
+
+If we're lazy and reload the tag array on each operation, it's still O(1) for
+the insert, but the disk/db load cost (probably) overwhelms that savings.
+
+** TODO Consider: tag array cache
+
+There will be a number of common tags that should be cached, saving the
+compress/decompress cycle and taking advantage of the O(1) cost of setting an
+index for the tag.
+
+This looks like a simple starting point for a LRU cache we could use for
+uncompressed tag arrays:
+
+http://www.geeksforgeeks.org/implement-lru-cache/
+
+** TODO Sure up read only mode
+
+Need some tests for read only mode.
+
+** TODO Test growable = false and new keys
+** TODO Exit on impossible conditions
+
+malloc, e.g. should cause an immediate exit.
 
 ** TODO Tags
 
@@ -385,123 +532,3 @@ they're already being cached by the database. As long as we're not compressing
 the array, it *might* be the case that we have direct access to the database's
 value in memory.
 
-* Bugs
-
-** test-simple fails sometimes, related to tracing
-
-Steps to reproduce:
-
-- Force a chunk growth with test-simple
-
-The test typically fails with:
-
-  main        Line 75    Expected 1000 but was 0
-
-Ways to make the test pass:
-
-- Set log level below warnings
-- Comment out the trace msg
-- trace something before the test is run (e.g. at the top of test_simple:main)
-- Comment out this line in tsdb_trace.c:
-
-  strftime(theDate, 32, "%d/%b/%Y %H:%M:%S", localtime(&theTime));
-
-This very odd behavior feels like a race condition, but on what I have no idea.
-
-* Next Steps
-
-** DONE Clean up source
-
-Source code could use some reformatting:
-
-- 79 max line length
-- Improved white spacing
-- Misc cleanup
-
-** DONE traceEvent to trace_info, etc
-** DONE Misc refactor
-
-*** DONE db_set -> db_put
-*** DONE lowerCamelCase to standard
-*** DONE consistent names
-
-- hash/hash_index -> index
-- name/hash_name -> key
-
-*** DONE Shorter names
-
-- num_xxx -> xxx
-- xxx_mode -> xxx
-- alive_and_kicking -> open
-
-** DONE Refactor map-XXX
-
-*** DONE Rename to key-XXX
-*** DONE Store only the index
-*** DONE Drop index map
-
-** DONE Refactor rsv-XXX
-
-This is pointless. We can use the next counter authoritatively.
-
-** DONE Refactor normalize_epoch
-
-Should be a void.
-
-** DONE Possibly simplify goto_epoch options
-
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| # | Exists | Option   | Value | Create | Load | Ret | Writable | Scrap |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 1 | no     | create   |     0 | no     | n/a  |  -1 | no       |       |
-|   |        | ondemand |     0 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 3 | no     | create   |     1 | yes    | yes  |   0 | yes      |       |
-|   |        | ondemand |     0 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 5 | no     | create   |     0 | no     | no   |   0 | no       |       |
-|   |        | ondemand |     1 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 7 | no     | create   |     1 | yes    | no   |   0 | yes      |       |
-|   |        | ondemand |     1 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 2 | yes    | create   |     0 | n/a    | yes  |   0 | yes      | y     |
-|   |        | ondemand |     0 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 4 | yes    | create   |     1 | n/a    | yes  |   0 | yes      | y     |
-|   |        | ondemand |     0 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 6 | yes    | create   |     0 | n/a    | no   |   0 | yes      | y     |
-|   |        | ondemand |     1 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-| 8 | yes    | create   |     1 | n/a    | no   |   0 | yes      | y     |
-|   |        | ondemand |     1 |        |      |     |          |       |
-|---+--------+----------+-------+--------+------+-----+----------+-------|
-
-1. Fail if the epoch isn't there. This is useful for checking if an epoch
-   exists. Could be handled with fail_if_missing=1 flag.
-
-2. Actively load the epoch if it's there.
-
-  if epoch found:
-      load current epoch
-  else:
-      if error_on_missing flag:
-          return error
-      else:
-          set current epoch as missing, create/load on demand on first write
-          return success
-
-Proposed API:
-
-   tsdb_goto_epoch(db, epoch, fail_on_missing, growable)
-
-** DONE get_key_offset -> prepare_read_write
-** TODO Sure up read only mode
-
-Need some tests for read only mode.
-
-** TODO Test growable = false and new keys
-** TODO Exit on impossible conditions
-
-malloc, e.g. should cause an immediate exit.
