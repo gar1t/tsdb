@@ -97,7 +97,19 @@ extern void tsdb_flush(tsdb_handler *handler);
 
 extern int tsdb_tag_key(tsdb_handler *handler, char* key, char* tag_name);
 
-extern int tsdb_get_tag(tsdb_handler *handler, char* tag_name,
-                        tsdb_tag *tag);
+extern int tsdb_get_tag_indexes(tsdb_handler *handler,
+                                char *tag_name,
+                                u_int32_t *indexes,
+                                u_int32_t indexes_len,
+                                u_int32_t *count);
 
-extern int tsdb_is_tag_key(tsdb_handler *handler, tsdb_tag *tag, char* key);
+#define TSDB_AND 1
+#define TSDB_OR  2
+
+extern int tsdb_get_consolidated_tag_indexes(tsdb_handler *handler,
+                                             char **tag_names,
+                                             u_int16_t tag_names_len,
+                                             int consolidator,
+                                             u_int32_t *indexes,
+                                             u_int32_t indexes_len,
+                                             u_int32_t *count);

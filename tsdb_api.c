@@ -597,16 +597,93 @@ int tsdb_tag_key(tsdb_handler *handler, char *key, char *tag_name) {
     return 0;
 }
 
-int tsdb_get_tag(tsdb_handler *handler, char* tag_name, tsdb_tag *tag) {
-    return load_tag_array(handler, tag_name, tag);
+void scan_tag_indexes(tsdb_tag *tag, u_int32_t *indexes,
+                      u_int32_t max_index, u_int32_t *count) {
+    u_int32_t i, j, index;
+    u_int32_t max_word = max_index / BITS_PER_WORD;
+
+    *count = 0;
+
+    for (i = 0; i <= max_word; i++) {
+        if (tag->array[i] == 0) {
+            continue;
+        }
+        for (j = 0; j < BITS_PER_WORD; j++) {
+            index = i * BITS_PER_WORD + j;
+            if (index > max_index) {
+                break;
+            }
+            if (get_bit(tag->array, index)) {
+                indexes[(*count)++] = index;
+            }
+        }
+    }
 }
 
-int tsdb_is_tag_key(tsdb_handler *handler, tsdb_tag *tag, char* key) {
-    u_int32_t index;
+static u_int32_t max_tag_index(tsdb_handler *handler, u_int32_t max_len) {
+    if (handler->lowest_free_index < max_len) {
+        return handler->lowest_free_index - 1;
+    } else {
+        return max_len - 1;
+    }
+}
 
-    if (tsdb_get_key_index(handler, key, &index) == -1) {
+int tsdb_get_tag_indexes(tsdb_handler *handler, char *tag_name,
+                         u_int32_t *indexes, u_int32_t indexes_len,
+                         u_int32_t *count) {
+    tsdb_tag tag;
+    if (load_tag_array(handler, tag_name, &tag) == 0) {
+        u_int32_t max_index = max_tag_index(handler, indexes_len);
+        scan_tag_indexes(&tag, indexes, max_index, count);
+        free(tag.array);
         return 0;
     }
 
-    return get_bit(tag->array, index);
+    return -1;
+}
+
+int tsdb_get_consolidated_tag_indexes(tsdb_handler *handler,
+                                      char **tag_names,
+                                      u_int16_t tag_names_len,
+                                      int consolidator,
+                                      u_int32_t *indexes,
+                                      u_int32_t indexes_len,
+                                      u_int32_t *count) {
+    u_int32_t i, j, max_index;
+    tsdb_tag consolidated, current;
+
+    consolidated.array = NULL;
+    consolidated.array_len = 0;
+    max_index = max_tag_index(handler, indexes_len);
+
+    *count = 0;
+
+    for (i = 0; i < tag_names_len; i++) {
+        if (load_tag_array(handler, tag_names[i], &current) == 0) {
+            if (consolidated.array) {
+                for (j = 0; j < max_index; j++) {
+                    switch (consolidator) {
+                    case TSDB_AND:
+                        consolidated.array[j] &= current.array[j];
+                        break;
+                    case TSDB_OR:
+                        consolidated.array[j] |= current.array[j];
+                        break;
+                    default:
+                        consolidated.array[j] = current.array[j];
+                    }
+                }
+            } else {
+                consolidated.array = current.array;
+                consolidated.array_len = current.array_len;
+            }
+        }
+    }
+
+    if (consolidated.array) {
+        scan_tag_indexes(&consolidated, indexes, max_index, count);
+        free(consolidated.array);
+    }
+
+    return 0;
 }

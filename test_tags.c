@@ -21,13 +21,17 @@ int main(int argc, char *argv[]) {
     tsdb_handler db;
     int ret;
     tsdb_value write_val;
-    //tsdb_value *read_val;
+    tsdb_value *read_val;
 
     // Open (create) a new db.
 
     u_int16_t vals_per_entry = 1;
     ret = tsdb_open(file, &db, &vals_per_entry, 60, 0);
     assert_int_equal(0, ret);
+
+    //===================================================================
+    // Basic use
+    //===================================================================
 
     // We can't add a tag for a key that doesn't exist.
     //
@@ -47,22 +51,6 @@ int main(int argc, char *argv[]) {
     ret = tsdb_tag_key(&db, "key-1", "blue");
     assert_int_equal(0, ret);
 
-    // Let's get the new tag.
-    //
-    tsdb_tag blue;
-    ret = tsdb_get_tag(&db, "blue", &blue);
-    assert_int_equal(0, ret);
-
-    // Let's use the tag to test key membership.
-    //
-    ret = tsdb_is_tag_key(&db, &blue, "key-1");
-    assert_int_equal(1, ret);
-
-    // key-2 doesn't exist at all, so we don't expect it to be tagged.
-    //
-    ret = tsdb_is_tag_key(&db, &blue, "key-2");
-    assert_int_equal(0, ret);
-
     // Let's add key-2, but for a different tag.
     //
     write_val = 222;
@@ -70,37 +58,105 @@ int main(int argc, char *argv[]) {
     assert_int_equal(0, ret);
     ret = tsdb_tag_key(&db, "key-2", "red");
     assert_int_equal(0, ret);
-    
-    // And test association with our first tag.
-    //
-    ret = tsdb_is_tag_key(&db, &blue, "key-2");
-    assert_int_equal(0, ret);
 
     // And tag our second key using the first tag.
     //
     ret = tsdb_tag_key(&db, "key-2", "blue");
     assert_int_equal(0, ret);
 
-    // If we test association with the first tag, we'll continue to
-    // get false until we re-read the tag.
-    //
-    ret = tsdb_is_tag_key(&db, &blue, "key-2");
-    assert_int_equal(0, ret);
+    //===================================================================
+    // Single tag queries
+    //===================================================================
 
-    // Let's re-read the tag and check again.
+    // The primary purpose of a tag is to allow efficient lookup of
+    // associated key indexes.
     //
-    // Note we free the tag array before reusing the struct -- if we
-    // didn't do this, we'd lose that memory.
+    // Indexes for a tag can be collected using tsdb_get_tag_indexes.
     //
-    // TODO: Is this the right pattern? Should tsdb_get_tag complain
-    // when is sees something in array? Should we provide a tsdb_free_tag
-    // function that fees the memory and sets the array to 0? I think so.
-    //
-    free(blue.array);
-    ret = tsdb_get_tag(&db, "blue", &blue);
+    u_int32_t matches[100];
+    u_int32_t match_count;
+    ret = tsdb_get_tag_indexes(&db, "blue", matches, 100, &match_count);
     assert_int_equal(0, ret);
-    ret = tsdb_is_tag_key(&db, &blue, "key-2");
-    assert_int_equal(1, ret);
+    assert_int_equal(2, match_count);
+
+    // We have two matches. Let's use the indexes to lookup values.
+    //
+    ret = tsdb_get_by_index(&db, &matches[0], &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(111, *read_val);
+    ret = tsdb_get_by_index(&db, &matches[1], &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(222, *read_val);
+
+    // Let's check for indexes tagged wth "red".
+    //
+    ret = tsdb_get_tag_indexes(&db, "red", matches, 100, &match_count);
+    assert_int_equal(0, ret);
+    assert_int_equal(1, match_count);
+
+    // And their value.
+    //
+    ret = tsdb_get_by_index(&db, &matches[0], &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(222, *read_val);
+
+    //===================================================================
+    // Complex tag queries
+    //===================================================================
+
+    char *red_and_blue[2] = { "red", "blue" };
+
+    ret = tsdb_get_consolidated_tag_indexes(&db, red_and_blue, 2, TSDB_AND,
+                                            matches, 100, &match_count);
+    assert_int_equal(0, ret);
+    assert_int_equal(1, match_count);
+
+    // And the value for the matched index.
+    //
+    ret = tsdb_get_by_index(&db, &matches[0], &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(222, *read_val);
+
+    // Let's add a few more indexes with tags.
+    //
+    write_val = 333;
+    ret = tsdb_set(&db, "key-3", &write_val);
+    assert_int_equal(0, ret);
+    tsdb_tag_key(&db, "key-3", "red");
+    tsdb_tag_key(&db, "key-3", "blue");
+    tsdb_tag_key(&db, "key-3", "green");
+
+    write_val = 444;
+    ret = tsdb_set(&db, "key-4", &write_val);
+    assert_int_equal(0, ret);
+    tsdb_tag_key(&db, "key-4", "red");
+    tsdb_tag_key(&db, "key-4", "green");
+
+    // Let's get indexes that are tagged with both blue and green.
+    //
+    char *blue_and_green[2] = { "blue", "green" };
+    ret = tsdb_get_consolidated_tag_indexes(&db, blue_and_green, 2, TSDB_AND,
+                                            matches, 100, &match_count);
+    assert_int_equal(0, ret);
+    assert_int_equal(1, match_count);
+    ret = tsdb_get_by_index(&db, &matches[0], &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(333, *read_val);
+
+    // And now the indexes tagged with blue or green.
+    //
+    ret = tsdb_get_consolidated_tag_indexes(&db, blue_and_green, 2, TSDB_OR,
+                                            matches, 100, &match_count);
+    assert_int_equal(0, ret);
+    assert_int_equal(4, match_count);
+    tsdb_get_by_index(&db, &matches[0], &read_val);
+    assert_int_equal(111, *read_val);
+    tsdb_get_by_index(&db, &matches[1], &read_val);
+    assert_int_equal(222, *read_val);
+    tsdb_get_by_index(&db, &matches[2], &read_val);
+    assert_int_equal(333, *read_val);
+    tsdb_get_by_index(&db, &matches[3], &read_val);
+    assert_int_equal(444, *read_val);
 
     tsdb_close(&db);
 
