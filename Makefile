@@ -4,7 +4,7 @@ LDFLAGS      = -L /opt/local/lib
 SYSLIBS      = -lrrd -ldb
 
 TSDB_LIB     = libtsdb.a
-TSDB_LIB_O   = tsdb_api.o tsdb_trace.o quicklz.o
+TSDB_LIB_O   = tsdb_api.o tsdb_trace.o tsdb_bitmap.o quicklz.o
 
 TEST_LIBS    = $(TSDB_LIB) test_core.o seatest.o
 
@@ -15,7 +15,8 @@ TARGETS      = $(TSDB_LIB) \
                tsdb-get \
                test-simple \
                test-advanced \
-               test-bitmaps
+               test-bitmaps \
+               test-tags
 
 all: $(TARGETS)
 

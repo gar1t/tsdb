@@ -369,6 +369,11 @@ Need some tests for read only mode.
 
 malloc, e.g. should cause an immediate exit.
 
+** TODO Fix tracing
+
+I'm not seeing value from the tracing facility so far. If it continues to be
+more distration than helpful, nuke it.
+
 ** TODO Tags
 
 Support a new index type: a tab.

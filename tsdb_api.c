@@ -19,6 +19,7 @@
  */
 
 #include "tsdb_api.h"
+#include "tsdb_bitmap.h"
 
 static void db_put(tsdb_handler *handler,
                    void *key, u_int32_t key_len,
@@ -434,7 +435,8 @@ static int prepare_offset_by_key(tsdb_handler *handler, char *key,
     return prepare_offset_by_index(handler, &index, offset, for_write);
 }
 
-int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
+int tsdb_set_with_index(tsdb_handler *handler, char *key,
+                        tsdb_value *value, u_int32_t *index) {
     u_int32_t *chunk_ptr;
     u_int64_t offset;
     int rc;
@@ -461,9 +463,16 @@ int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
         } else {
             handler->chunk.fragment_changed[fragment] = 1;
         }
+
+        *index = offset / handler->values_len;
     }
 
     return rc;
+}
+
+int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value) {
+    u_int32_t index;
+    return tsdb_set_with_index(handler, key, value, &index);
 }
 
 int tsdb_get_by_key(tsdb_handler *handler, char *key, tsdb_value **value) {
@@ -506,4 +515,98 @@ void tsdb_flush(tsdb_handler *handler) {
     trace_info("Flushing database changes");
     tsdb_flush_chunk(handler);
     handler->db->sync(handler->db, 0);
+}
+
+static int load_tag_array(tsdb_handler *handler, char *name,
+                          tsdb_tag *tag) {
+    void *ptr;
+    u_int32_t len;
+    char str[255] = { 0 };
+
+    snprintf(str, sizeof(str), "tag-%s", name);
+
+    if (db_get(handler, str, strlen(str), &ptr, &len) == 0) {
+        u_int32_t *array;
+        array = (u_int32_t*)malloc(len);
+        if (array == NULL) {
+            free(ptr);
+            return -2;
+        }
+        memcpy(array, ptr, len);
+        tag->array = array;
+        tag->array_len = len;
+        return 0;
+    }
+
+    return -1;
+}
+
+static int allocate_tag_array(tsdb_tag *tag) {
+    u_int32_t array_len = CHUNK_GROWTH / sizeof(u_int32_t);
+
+    u_int32_t* array = malloc(array_len);
+    if (!array) {
+        return -1;
+    }
+
+    memset(array, 0, array_len);
+
+    tag->array = array;
+    tag->array_len = array_len;
+
+    return 0;
+}
+
+static void set_tag(tsdb_handler *handler, char *name, tsdb_tag *tag) {
+    char str[255];
+
+    snprintf(str, sizeof(str), "tag-%s", name);
+
+    db_put(handler, str, strlen(str), tag->array, tag->array_len);
+}
+
+static int ensure_tag_array(tsdb_handler *handler, char *name, tsdb_tag *tag) {
+    if (load_tag_array(handler, name, tag) == 0) {
+        return 0;
+    }
+
+    if (allocate_tag_array(tag) == 0) {
+        return 0;
+    }
+
+    return -1;
+}
+
+int tsdb_tag_key(tsdb_handler *handler, char *key, char *tag_name) {
+    u_int32_t index;
+
+    if (tsdb_get_key_index(handler, key, &index) == -1) {
+        return -1;
+    }
+
+    tsdb_tag tag;
+    if (ensure_tag_array(handler, tag_name, &tag)) {
+        return -1;
+    }
+
+    set_bit(tag.array, index);
+    set_tag(handler, tag_name, &tag);
+
+    free(tag.array);
+
+    return 0;
+}
+
+int tsdb_get_tag(tsdb_handler *handler, char* tag_name, tsdb_tag *tag) {
+    return load_tag_array(handler, tag_name, tag);
+}
+
+int tsdb_is_tag_key(tsdb_handler *handler, tsdb_tag *tag, char* key) {
+    u_int32_t index;
+
+    if (tsdb_get_key_index(handler, key, &index) == -1) {
+        return 0;
+    }
+
+    return get_bit(tag->array, index);
 }

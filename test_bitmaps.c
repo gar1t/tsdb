@@ -1,24 +1,5 @@
 #include "test_core.h"
-
-typedef u_int32_t word_t;
-
-enum { BITS_PER_WORD = sizeof(word_t) * CHAR_BIT };
-
-#define WORD_OFFSET(b) ((b) / BITS_PER_WORD)
-#define BIT_OFFSET(b)  ((b) % BITS_PER_WORD)
-
-void set_bit(word_t *words, int n) { 
-    words[WORD_OFFSET(n)] |= (1 << BIT_OFFSET(n));
-}
-
-void clear_bit(word_t *words, int n) {
-    words[WORD_OFFSET(n)] &= ~(1 << BIT_OFFSET(n)); 
-}
-
-int get_bit(word_t *words, int n) {
-    word_t bit = words[WORD_OFFSET(n)] & (1 << BIT_OFFSET(n));
-    return bit != 0; 
-}
+#include "tsdb_bitmap.h"
 
 void print_title(char *title) {
     u_int32_t i, padding = 18 - strlen(title);
@@ -28,38 +9,17 @@ void print_title(char *title) {
     }
 }
 
-void scan_result(word_t *result, u_int32_t max_index, 
-                 void(*handler)(u_int32_t *index)) {
-    u_int32_t i, j, index;
-    u_int32_t max_word = max_index / BITS_PER_WORD;
-
-    for (i = 0; i <= max_word; i++) {
-        if (result[i] == 0) {
-            continue;
-        }
-        for (j = 0; j < BITS_PER_WORD; j++) {
-            index = i * BITS_PER_WORD + j;
-            if (index > max_index) {
-                break;
-            }
-            if (get_bit(result, index) && handler) {
-                handler(&index);
-            }
-        }
-    }
-}
-
 void print_index(u_int32_t *index) {
     printf(" %u", *index);
 }
 
-void print_result(word_t *result, u_int32_t max_index, char *title) {
+void print_result(u_int32_t *result, u_int32_t max_index, char *title) {
     print_title(title);
     scan_result(result, max_index, print_index);
     printf("\n");
 }
 
-void compress_array(word_t *array, u_int32_t array_len,
+void compress_array(u_int32_t *array, u_int32_t array_len,
                     char *compressed, u_int32_t *compressed_len) {
     u_int32_t new_len = array_len + 400;
     qlz_state_compress state_compress;
@@ -71,18 +31,18 @@ void compress_array(word_t *array, u_int32_t array_len,
 
 int main(int argc, char *argv[]) {
     u_int32_t i, j;
-    u_int8_t word_size = sizeof(word_t);
+    u_int8_t word_size = sizeof(u_int32_t);
     u_int32_t array_len = CHUNK_GROWTH / word_size;
 
     // three arrays, each representing a tag
 
-    word_t tag1[array_len]; memset(tag1, 0, sizeof(tag1));
-    word_t tag2[array_len]; memset(tag2, 0, sizeof(tag2));
-    word_t tag3[array_len]; memset(tag3, 0, sizeof(tag3));
+    u_int32_t tag1[array_len]; memset(tag1, 0, sizeof(tag1));
+    u_int32_t tag2[array_len]; memset(tag2, 0, sizeof(tag2));
+    u_int32_t tag3[array_len]; memset(tag3, 0, sizeof(tag3));
 
     // array for operation results
 
-    word_t result[array_len];
+    u_int32_t result[array_len];
 
     // to tag an index, we set the bit on the applicable array
 

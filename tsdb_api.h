@@ -33,28 +33,33 @@
 #define MAX_NUM_FRAGMENTS 16384
 
 typedef struct {
-  u_int8_t *data;
-  u_int32_t data_len;
-  u_int32_t epoch;
-  u_int8_t growable;
-  u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
-  u_int32_t base_index;
+    u_int8_t *data;
+    u_int32_t data_len;
+    u_int32_t epoch;
+    u_int8_t growable;
+    u_int8_t fragment_changed[MAX_NUM_FRAGMENTS];
+    u_int32_t base_index;
 } tsdb_chunk;
+
+typedef struct {
+    u_int32_t *array;
+    u_int32_t array_len;
+} tsdb_tag;
 
 typedef u_int32_t tsdb_value;
 
 typedef struct {
-  u_int8_t alive;
-  u_int8_t read_only;
-  u_int16_t values_per_entry;
-  u_int16_t values_len;
-  u_int32_t unknown_value;
-  u_int32_t lowest_free_index;
-  u_int32_t slot_duration;
-  qlz_state_compress state_compress;
-  qlz_state_decompress state_decompress;
-  tsdb_chunk chunk;
-  DB *db;
+    u_int8_t alive;
+    u_int8_t read_only;
+    u_int16_t values_per_entry;
+    u_int16_t values_len;
+    u_int32_t unknown_value;
+    u_int32_t lowest_free_index;
+    u_int32_t slot_duration;
+    qlz_state_compress state_compress;
+    qlz_state_decompress state_decompress;
+    tsdb_chunk chunk;
+    DB *db;
 } tsdb_handler;
 
 extern int  tsdb_open(char *tsdb_path, tsdb_handler *handler,
@@ -73,6 +78,9 @@ extern int tsdb_goto_epoch(tsdb_handler *handler,
 
 extern int tsdb_set(tsdb_handler *handler, char *key, tsdb_value *value);
 
+extern int tsdb_set_with_index(tsdb_handler *handler, char *key,
+                               tsdb_value *value, u_int32_t *index);
+
 extern int tsdb_get_by_key(tsdb_handler *handler,
                            char *key,
                            tsdb_value **value);
@@ -87,3 +95,9 @@ extern int tsdb_get_by_index(tsdb_handler *handler,
 
 extern void tsdb_flush(tsdb_handler *handler);
 
+extern int tsdb_tag_key(tsdb_handler *handler, char* key, char* tag_name);
+
+extern int tsdb_get_tag(tsdb_handler *handler, char* tag_name,
+                        tsdb_tag *tag);
+
+extern int tsdb_is_tag_key(tsdb_handler *handler, tsdb_tag *tag, char* key);

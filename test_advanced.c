@@ -240,6 +240,25 @@ int main(int argc, char *argv[]) {
     assert_int_equal(444444, read_val[0]);
     assert_int_equal(555555, read_val[1]);
 
+    // There an alternative form of tsdb_set that updates an index
+    // argument with the key's index. This can be used to save a
+    // call to tsdb_get_key_index if a key's index is needed
+    // immediately after a set.
+    //
+    wide_val[0] = 66666666;
+    wide_val[1] = 77777777;
+    ret = tsdb_set_with_index(&db, "key-1", wide_val, &index);
+    assert_int_equal(0, ret);
+    assert_true(index >= 0);
+
+    // And as above, we can use the index to read the values back
+    // directly.
+    //
+    ret = tsdb_get_by_index(&db, &index, &read_val);
+    assert_int_equal(0, ret);
+    assert_int_equal(66666666, read_val[0]);
+    assert_int_equal(77777777, read_val[1]);
+
     // We can read up to the maximum index (chunk slots - 1) but no
     // further. We've already expanded the chunk size, so can currently
     // read up to two chunk's worth of values using indexes.
